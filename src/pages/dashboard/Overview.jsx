@@ -11,9 +11,9 @@ export default function Overview() {
     return (
       <EmptyState
         title="Set up your restaurant"
-        body="Add your restaurant details first. Then you can build the menu and generate a QR code."
+        body="Add restaurant name, phone, address and an optional logo. Then you can build the menu and generate a QR code."
         actionTo="/dashboard/restaurant"
-        actionLabel="Create restaurant"
+        actionLabel="Set up restaurant"
       />
     )
   }

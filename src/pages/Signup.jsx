@@ -3,32 +3,80 @@ import { Link, useNavigate } from 'react-router-dom'
 import Alert from '../components/Alert'
 import Button from '../components/Button'
 import Field, { inputClass } from '../components/Field'
+import {
+  authEmailFromUsername,
+  friendlyAuthError,
+  normalizePhone,
+  normalizeUsername,
+  validateSignup,
+} from '../lib/auth'
 import { supabase } from '../lib/supabase'
+import { createProfile, isUsernameAvailable } from '../services/profiles'
 
 export default function Signup() {
   const navigate = useNavigate()
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
+  const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
 
   async function onSubmit(event) {
     event.preventDefault()
+    const validation = validateSignup({ username, phone, password, confirmPassword })
+    if (validation) {
+      setError(validation)
+      return
+    }
+
     setBusy(true)
     setError('')
-    setNotice('')
-    const { data, error: nextError } = await supabase.auth.signUp({ email, password })
+
+    const handle = normalizeUsername(username)
+    const contact = normalizePhone(phone)
+    const { available, error: usernameError } = await isUsernameAvailable(handle)
+    if (!usernameError && available === false) {
+      setBusy(false)
+      setError('Username already exists')
+      return
+    }
+
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email: authEmailFromUsername(handle),
+      password,
+      options: {
+        data: {
+          username: handle,
+          contact_number: contact,
+        },
+      },
+    })
+
+    if (signUpError) {
+      setBusy(false)
+      setError(friendlyAuthError(signUpError))
+      return
+    }
+
+    if (!data.session) {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: authEmailFromUsername(handle),
+        password,
+      })
+      if (signInError) {
+        setBusy(false)
+        setError(friendlyAuthError(signInError))
+        return
+      }
+    }
+
+    if (data.user?.id) {
+      await createProfile(data.user.id, handle)
+    }
+
     setBusy(false)
-    if (nextError) {
-      setError(nextError.message)
-      return
-    }
-    if (data.session) {
-      navigate('/dashboard', { replace: true })
-      return
-    }
-    setNotice('Check your email to confirm the account, then log in.')
+    navigate('/dashboard', { replace: true })
   }
 
   return (
@@ -37,18 +85,40 @@ export default function Signup() {
       <p className="mt-2 text-sm text-muted">Free to start. One restaurant per account.</p>
       <form onSubmit={onSubmit} className="mt-8 space-y-4 rounded-2xl border border-line bg-card p-6">
         <Alert>{error}</Alert>
-        <Alert type="success">{notice}</Alert>
-        <Field label="Email">
-          <input className={inputClass} type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Field label="Username">
+          <input
+            className={inputClass}
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+        </Field>
+        <Field label="Contact number">
+          <input
+            className={inputClass}
+            type="tel"
+            autoComplete="tel"
+            inputMode="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
         </Field>
         <Field label="Password">
           <input
             className={inputClass}
             type="password"
-            required
-            minLength={6}
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+          />
+        </Field>
+        <Field label="Confirm password">
+          <input
+            className={inputClass}
+            type="password"
+            autoComplete="new-password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
           />
         </Field>
         <Button type="submit" className="w-full" disabled={busy}>

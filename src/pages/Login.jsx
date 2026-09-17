@@ -3,24 +3,34 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import Alert from '../components/Alert'
 import Button from '../components/Button'
 import Field, { inputClass } from '../components/Field'
+import { authEmailFromUsername, friendlyAuthError, validateLogin } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 
 export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
   async function onSubmit(event) {
     event.preventDefault()
+    const validation = validateLogin({ username, password })
+    if (validation) {
+      setError(validation)
+      return
+    }
+
     setBusy(true)
     setError('')
-    const { error: nextError } = await supabase.auth.signInWithPassword({ email, password })
+    const { error: nextError } = await supabase.auth.signInWithPassword({
+      email: authEmailFromUsername(username),
+      password,
+    })
     setBusy(false)
     if (nextError) {
-      setError(nextError.message)
+      setError(friendlyAuthError(nextError))
       return
     }
     navigate(location.state?.from || '/dashboard', { replace: true })
@@ -32,15 +42,19 @@ export default function Login() {
       <p className="mt-2 text-sm text-muted">Log in to manage your digital menu.</p>
       <form onSubmit={onSubmit} className="mt-8 space-y-4 rounded-2xl border border-line bg-card p-6">
         <Alert>{error}</Alert>
-        <Field label="Email">
-          <input className={inputClass} type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Field label="Username">
+          <input
+            className={inputClass}
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
         </Field>
         <Field label="Password">
           <input
             className={inputClass}
             type="password"
-            required
-            minLength={6}
+            autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />

@@ -68,7 +68,10 @@ export default function Settings() {
         </form>
       </Card>
       <Card title="Account">
-        <p className="text-sm text-muted">{user?.email}</p>
+        <p className="text-sm text-muted">{user?.user_metadata?.username || 'Account'}</p>
+        {user?.user_metadata?.contact_number ? (
+          <p className="text-sm text-muted">{user.user_metadata.contact_number}</p>
+        ) : null}
         <Button className="mt-4" variant="secondary" onClick={onSignOut}>Sign out</Button>
       </Card>
     </div>

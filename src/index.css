@@ -10,6 +10,13 @@
   --color-muted: #78716c;
   --color-accent: #b45309;
   --color-accent-dark: #9a3412;
+  --color-forest: #1f3d32;
+  --color-forest-deep: #162c24;
+  --color-gold: #c4a574;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 html,

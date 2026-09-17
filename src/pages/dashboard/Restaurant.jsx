@@ -16,15 +16,13 @@ export default function Restaurant() {
   const [notice, setNotice] = useState('')
 
   useEffect(() => {
-    if (restaurant) {
-      setForm({
-        name: restaurant.name || '',
-        phone: restaurant.phone || '',
-        address: restaurant.address || '',
-        logo_url: restaurant.logo_url || '',
-      })
-    }
-  }, [restaurant])
+    setForm({
+      name: restaurant?.name || '',
+      phone: restaurant?.phone || user?.user_metadata?.contact_number || '',
+      address: restaurant?.address || '',
+      logo_url: restaurant?.logo_url || '',
+    })
+  }, [restaurant, user])
 
   if (loading) return <Spinner />
 
@@ -57,7 +55,12 @@ export default function Restaurant() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="mb-6 font-display text-3xl">Restaurant</h1>
+      <h1 className="mb-2 font-display text-3xl">{restaurant ? 'Restaurant' : 'Set up your restaurant'}</h1>
+      {!restaurant ? (
+        <p className="mb-6 text-sm text-muted">Add your restaurant details to start building your digital menu.</p>
+      ) : (
+        <div className="mb-6" />
+      )}
       <Card>
         <form onSubmit={onSubmit} className="space-y-4">
           <Alert>{error}</Alert>
@@ -66,12 +69,12 @@ export default function Restaurant() {
             <input className={inputClass} required value={form.name} onChange={(e) => set('name', e.target.value)} />
           </Field>
           <Field label="Phone">
-            <input className={inputClass} value={form.phone} onChange={(e) => set('phone', e.target.value)} />
+            <input className={inputClass} required value={form.phone} onChange={(e) => set('phone', e.target.value)} />
           </Field>
           <Field label="Address">
-            <textarea className={inputClass} rows={3} value={form.address} onChange={(e) => set('address', e.target.value)} />
+            <textarea className={inputClass} rows={3} required value={form.address} onChange={(e) => set('address', e.target.value)} />
           </Field>
-          <Field label="Logo" hint="JPG, PNG or WebP. Max 2MB.">
+          <Field label="Logo (optional)" hint="JPG, PNG or WebP. Max 2MB.">
             <input type="file" accept="image/png,image/jpeg,image/webp" onChange={onUpload} />
           </Field>
           {form.logo_url ? <img src={form.logo_url} alt="" className="h-16 w-16 rounded-xl object-cover" /> : null}
