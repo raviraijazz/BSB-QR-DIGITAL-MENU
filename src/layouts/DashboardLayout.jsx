@@ -7,7 +7,7 @@ const links = [
   { to: '/dashboard/restaurant', label: 'Restaurant' },
   { to: '/dashboard/categories', label: 'Categories' },
   { to: '/dashboard/menu', label: 'Menu items' },
-  { to: '/dashboard/qr', label: 'QR code' },
+  { to: '/dashboard/qr', label: 'QR Studio' },
   { to: '/dashboard/settings', label: 'Settings' },
 ]
 

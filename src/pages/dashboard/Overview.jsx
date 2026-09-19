@@ -21,7 +21,7 @@ export default function Overview() {
   const cards = [
     { to: '/dashboard/categories', title: 'Categories', body: 'Group dishes like Starters, Mains, Drinks.' },
     { to: '/dashboard/menu', title: 'Menu items', body: 'Add names, prices, photos and availability.' },
-    { to: '/dashboard/qr', title: 'QR code', body: 'Download a QR that always opens this menu.' },
+    { to: '/dashboard/qr', title: 'QR Code Studio', body: 'Brand, download and print the QR that always opens this menu.' },
   ]
 
   return (
