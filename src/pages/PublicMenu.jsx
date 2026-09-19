@@ -1,14 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import Spinner from '../components/Spinner'
+import { displayPrices } from '../lib/pricing'
 import { getPublicRestaurant } from '../services/restaurants'
 import { getPublicMenu } from '../services/menuItems'
-
-function formatPrice(value) {
-  const n = Number(value)
-  if (Number.isNaN(n)) return ''
-  return `₹${n % 1 === 0 ? n.toFixed(0) : n.toFixed(2)}`
-}
 
 export default function PublicMenu() {
   const { slug } = useParams()
@@ -93,23 +88,37 @@ export default function PublicMenu() {
             <section key={category.id} id={category.id}>
               <h2 className="font-display text-2xl">{category.name}</h2>
               <ul className="mt-4 space-y-3">
-                {category.items.map((item) => (
-                  <li key={item.id} className={`rounded-2xl border border-line bg-card p-4 ${item.is_available ? '' : 'opacity-55'}`}>
-                    <div className="flex gap-4">
-                      {item.image_url ? (
-                        <img src={item.image_url} alt="" className="h-20 w-20 shrink-0 rounded-xl object-cover" />
-                      ) : null}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <h3 className="font-medium">{item.name}</h3>
-                          <p className="shrink-0 text-sm">{formatPrice(item.price)}</p>
+                {category.items.map((item) => {
+                  const prices = displayPrices(item)
+                  const single = prices.length === 1 && !prices[0].name
+                  return (
+                    <li key={item.id} className={`rounded-2xl border border-line bg-card p-4 ${item.is_available ? '' : 'opacity-55'}`}>
+                      <div className="flex gap-4">
+                        {item.image_url ? (
+                          <img src={item.image_url} alt="" className="h-20 w-20 shrink-0 rounded-xl object-cover" />
+                        ) : null}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <h3 className="font-medium">{item.name}</h3>
+                            {single ? <p className="shrink-0 text-sm">{prices[0].label}</p> : null}
+                          </div>
+                          {item.description ? <p className="mt-1 text-sm text-muted">{item.description}</p> : null}
+                          {!single && prices.length > 0 ? (
+                            <ul className="mt-2 space-y-1">
+                              {prices.map((row) => (
+                                <li key={`${item.id}-${row.name}`} className="flex justify-between gap-3 text-sm">
+                                  <span>{row.name}</span>
+                                  <span>{row.label.replace(`${row.name} `, '')}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                          {!item.is_available ? <p className="mt-2 text-xs uppercase tracking-wide text-accent">Currently unavailable</p> : null}
                         </div>
-                        {item.description ? <p className="mt-1 text-sm text-muted">{item.description}</p> : null}
-                        {!item.is_available ? <p className="mt-2 text-xs uppercase tracking-wide text-accent">Currently unavailable</p> : null}
                       </div>
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  )
+                })}
               </ul>
             </section>
           ))

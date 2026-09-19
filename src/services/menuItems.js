@@ -19,6 +19,7 @@ export async function createMenuItem(restaurantId, values) {
       name: values.name.trim(),
       description: values.description.trim(),
       price: Number(values.price) || 0,
+      variants: values.variants || [],
       image_url: values.image_url || null,
       is_available: values.is_available !== false,
       sort_order: values.sort_order || 0,
@@ -57,7 +58,7 @@ export async function getPublicMenu(restaurantId) {
       .order('sort_order', { ascending: true }),
     supabase
       .from('menu_items')
-      .select('id, category_id, name, description, price, image_url, is_available, sort_order')
+      .select('id, category_id, name, description, price, variants, image_url, is_available, sort_order')
       .eq('restaurant_id', restaurantId)
       .order('sort_order', { ascending: true }),
   ])

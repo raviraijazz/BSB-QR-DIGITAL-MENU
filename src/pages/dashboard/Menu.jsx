@@ -6,11 +6,21 @@ import Card from '../../components/Card'
 import EmptyState from '../../components/EmptyState'
 import Field, { inputClass } from '../../components/Field'
 import Spinner from '../../components/Spinner'
+import { emptyVariant, itemToFormPricing, pricingPayload, summaryPrice, validatePricing } from '../../lib/pricing'
 import { uploadAsset } from '../../lib/upload'
 import { listCategories } from '../../services/categories'
 import { createMenuItem, deleteMenuItem, listMenuItems, updateMenuItem } from '../../services/menuItems'
 
-const empty = { category_id: '', name: '', description: '', price: '', image_url: '', is_available: true }
+const empty = {
+  category_id: '',
+  name: '',
+  description: '',
+  pricingMode: 'single',
+  price: '',
+  variants: [emptyVariant()],
+  image_url: '',
+  is_available: true,
+}
 
 export default function Menu() {
   const { user, restaurant, loading } = useOutletContext()
@@ -60,6 +70,24 @@ export default function Menu() {
     setForm((current) => ({ ...current, [key]: value }))
   }
 
+  function setVariant(index, key, value) {
+    setForm((current) => ({
+      ...current,
+      variants: current.variants.map((variant, i) => (i === index ? { ...variant, [key]: value } : variant)),
+    }))
+  }
+
+  function addVariant() {
+    setForm((current) => ({ ...current, variants: [...current.variants, emptyVariant()] }))
+  }
+
+  function removeVariant(index) {
+    setForm((current) => {
+      const next = current.variants.filter((_, i) => i !== index)
+      return { ...current, variants: next.length ? next : [emptyVariant()] }
+    })
+  }
+
   async function onUpload(event) {
     const file = event.target.files?.[0]
     if (!file) return
@@ -70,13 +98,21 @@ export default function Menu() {
 
   async function onSubmit(event) {
     event.preventDefault()
+    const pricingError = validatePricing(form)
+    if (pricingError) {
+      setError(pricingError)
+      return
+    }
+
     setBusy(true)
     setError('')
+    const pricing = pricingPayload(form)
     const payload = {
       category_id: form.category_id,
       name: form.name,
       description: form.description,
-      price: form.price,
+      price: pricing.price,
+      variants: pricing.variants,
       image_url: form.image_url,
       is_available: form.is_available,
     }
@@ -99,10 +135,15 @@ export default function Menu() {
       category_id: item.category_id,
       name: item.name,
       description: item.description || '',
-      price: String(item.price ?? ''),
       image_url: item.image_url || '',
       is_available: item.is_available,
+      ...itemToFormPricing(item),
     })
+  }
+
+  function cancelEdit() {
+    setEditing(null)
+    setForm({ ...empty, category_id: categories[0]?.id || '' })
   }
 
   async function toggle(item) {
@@ -131,9 +172,76 @@ export default function Menu() {
           <Field label="Name">
             <input className={inputClass} required value={form.name} onChange={(e) => set('name', e.target.value)} />
           </Field>
-          <Field label="Price (₹)">
-            <input className={inputClass} type="number" min="0" step="0.01" required value={form.price} onChange={(e) => set('price', e.target.value)} />
-          </Field>
+          <div className="sm:col-span-2 space-y-3 rounded-2xl border border-line bg-paper/60 p-4">
+            <p className="text-sm font-medium">Pricing</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className={`rounded-xl px-3 py-2 text-sm ${form.pricingMode === 'single' ? 'bg-ink text-white' : 'bg-white border border-line'}`}
+                onClick={() => set('pricingMode', 'single')}
+              >
+                Single price
+              </button>
+              <button
+                type="button"
+                className={`rounded-xl px-3 py-2 text-sm ${form.pricingMode === 'multiple' ? 'bg-ink text-white' : 'bg-white border border-line'}`}
+                onClick={() => set('pricingMode', 'multiple')}
+              >
+                Multiple variants
+              </button>
+            </div>
+            {form.pricingMode === 'single' ? (
+              <Field label="Price (₹)">
+                <input
+                  className={inputClass}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.price}
+                  onChange={(e) => set('price', e.target.value)}
+                />
+              </Field>
+            ) : (
+              <div className="space-y-3">
+                {form.variants.map((variant, index) => (
+                  <div key={index} className="grid gap-2 sm:grid-cols-[1fr_110px_110px_auto] sm:items-end">
+                    <Field label={index === 0 ? 'Variant / size' : ''}>
+                      <input
+                        className={inputClass}
+                        placeholder="e.g. Half, Large, Glass"
+                        value={variant.name}
+                        onChange={(e) => setVariant(index, 'name', e.target.value)}
+                      />
+                    </Field>
+                    <Field label={index === 0 ? 'Price (₹)' : ''}>
+                      <input
+                        className={inputClass}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={variant.price}
+                        onChange={(e) => setVariant(index, 'price', e.target.value)}
+                      />
+                    </Field>
+                    <Field label={index === 0 ? 'Available' : ''}>
+                      <select
+                        className={inputClass}
+                        value={variant.is_available ? 'yes' : 'no'}
+                        onChange={(e) => setVariant(index, 'is_available', e.target.value === 'yes')}
+                      >
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    </Field>
+                    <Button variant="danger" className="mb-0.5" onClick={() => removeVariant(index)}>
+                      Delete
+                    </Button>
+                  </div>
+                ))}
+                <Button variant="secondary" onClick={addVariant}>+ Add Variant</Button>
+              </div>
+            )}
+          </div>
           <Field label="Available">
             <select className={inputClass} value={form.is_available ? 'yes' : 'no'} onChange={(e) => set('is_available', e.target.value === 'yes')}>
               <option value="yes">Yes</option>
@@ -151,11 +259,7 @@ export default function Menu() {
           {form.image_url ? <img src={form.image_url} alt="" className="h-16 w-16 rounded-xl object-cover" /> : null}
           <div className="sm:col-span-2 flex gap-3">
             <Button type="submit" disabled={busy}>{busy ? 'Saving...' : editing ? 'Update item' : 'Add item'}</Button>
-            {editing ? (
-              <Button variant="secondary" onClick={() => { setEditing(null); setForm({ ...empty, category_id: categories[0]?.id || '' }) }}>
-                Cancel
-              </Button>
-            ) : null}
+            {editing ? <Button variant="secondary" onClick={cancelEdit}>Cancel</Button> : null}
           </div>
         </form>
         <div className="mt-4"><Alert>{error}</Alert></div>
@@ -168,7 +272,7 @@ export default function Menu() {
                 {item.image_url ? <img src={item.image_url} alt="" className="h-14 w-14 rounded-lg object-cover" /> : <div className="h-14 w-14 rounded-lg bg-paper" />}
                 <div className="min-w-0 flex-1">
                   <p className="font-medium">{item.name}</p>
-                  <p className="text-sm text-muted">₹{Number(item.price).toFixed(0)} · {item.is_available ? 'Available' : 'Hidden'}</p>
+                  <p className="text-sm text-muted">{summaryPrice(item)} · {item.is_available ? 'Available' : 'Hidden'}</p>
                 </div>
                 <Button variant="secondary" onClick={() => toggle(item)}>{item.is_available ? 'Disable' : 'Enable'}</Button>
                 <Button variant="secondary" onClick={() => startEdit(item)}>Edit</Button>

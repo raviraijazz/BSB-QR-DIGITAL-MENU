@@ -26,6 +26,7 @@ create table if not exists public.menu_items (
   name text not null,
   description text default '',
   price numeric(10, 2) not null default 0,
+  variants jsonb not null default '[]'::jsonb,
   image_url text,
   is_available boolean not null default true,
   sort_order int not null default 0,
