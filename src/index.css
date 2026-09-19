@@ -27,6 +27,7 @@ body,
 
 body {
   margin: 0;
+  overflow-x: hidden;
   font-family: var(--font-sans);
   color: var(--color-ink);
   background: var(--color-paper);
