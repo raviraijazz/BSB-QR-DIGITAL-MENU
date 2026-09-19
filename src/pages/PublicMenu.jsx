@@ -42,7 +42,9 @@ export default function PublicMenu() {
     return categories
       .map((category) => ({
         ...category,
-        items: items.filter((item) => item.category_id === category.id),
+        items: items
+          .filter((item) => item.category_id === category.id)
+          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
       }))
       .filter((category) => category.items.length > 0)
   }, [categories, items])

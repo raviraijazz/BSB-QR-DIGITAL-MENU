@@ -5,8 +5,17 @@ import Button from '../../components/Button'
 import Card from '../../components/Card'
 import EmptyState from '../../components/EmptyState'
 import Field, { inputClass } from '../../components/Field'
+import SortableList, { SortHandle } from '../../components/SortableList'
 import Spinner from '../../components/Spinner'
-import { createCategory, deleteCategory, listCategories, updateCategory } from '../../services/categories'
+import { withSortOrder } from '../../lib/sort'
+import {
+  createCategory,
+  deleteCategory,
+  duplicateCategory,
+  listCategories,
+  reorderCategories,
+  updateCategory,
+} from '../../services/categories'
 
 export default function Categories() {
   const { restaurant, loading } = useOutletContext()
@@ -14,6 +23,7 @@ export default function Categories() {
   const [name, setName] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   async function load() {
     if (!restaurant) return
@@ -66,9 +76,39 @@ export default function Categories() {
     else load()
   }
 
+  async function duplicate(item) {
+    if (saving || busy) return
+    setSaving(true)
+    setError('')
+    const { error: nextError, ordered } = await duplicateCategory(restaurant.id, item, items)
+    setSaving(false)
+    if (nextError) {
+      setError(nextError.message)
+      load()
+      return
+    }
+    setItems(withSortOrder(ordered))
+  }
+
+  async function onReorder(next, previous) {
+    if (saving) return
+    setSaving(true)
+    setError('')
+    setItems(withSortOrder(next))
+    const { error: nextError } = await reorderCategories(restaurant.id, next)
+    setSaving(false)
+    if (nextError) {
+      setError(nextError.message)
+      setItems(previous)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <h1 className="font-display text-3xl">Categories</h1>
+      <div>
+        <h1 className="font-display text-3xl">Categories</h1>
+        <p className="mt-1 text-sm text-muted">Drag the handle to change the order shown on your public menu.</p>
+      </div>
       <Card title="Add category">
         <form onSubmit={onCreate} className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1">
@@ -76,28 +116,47 @@ export default function Categories() {
               <input className={inputClass} placeholder="e.g. Starters" value={name} onChange={(e) => setName(e.target.value)} />
             </Field>
           </div>
-          <Button type="submit" disabled={busy}>Add</Button>
+          <Button type="submit" disabled={busy || saving}>Add</Button>
         </form>
-        <Alert>{error}</Alert>
+        <div className="mt-3">
+          <Alert>{error}</Alert>
+          {saving ? <p className="mt-2 text-xs text-muted">Saving order...</p> : null}
+        </div>
       </Card>
       <Card title="Your categories">
         {items.length === 0 ? (
           <p className="text-sm text-muted">No categories yet.</p>
         ) : (
-          <ul className="space-y-3">
-            {items.map((item) => (
-              <li key={item.id} className="flex items-center gap-3">
-                <input
-                  className={inputClass}
-                  defaultValue={item.name}
-                  onBlur={(e) => {
-                    if (e.target.value.trim() && e.target.value !== item.name) rename(item, e.target.value.trim())
-                  }}
-                />
-                <Button variant="danger" onClick={() => remove(item)}>Delete</Button>
-              </li>
-            ))}
-          </ul>
+          <SortableList
+            items={items}
+            getId={(item) => item.id}
+            disabled={saving}
+            onReorder={onReorder}
+            className="space-y-3"
+            renderItem={(item, { dragging, handleProps, disabled }) => (
+              <div className={`flex flex-col gap-2 sm:flex-row sm:items-center ${dragging ? 'rounded-xl bg-white p-1 shadow-sm ring-1 ring-forest' : ''}`}>
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <SortHandle handleProps={handleProps} disabled={disabled} label={`Reorder ${item.name}`} />
+                  <input
+                    className={inputClass}
+                    defaultValue={item.name}
+                    key={`${item.id}-${item.name}`}
+                    onBlur={(e) => {
+                      if (e.target.value.trim() && e.target.value !== item.name) rename(item, e.target.value.trim())
+                    }}
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2 sm:justify-end">
+                  <Button variant="secondary" disabled={saving} onClick={() => duplicate(item)}>
+                    Duplicate
+                  </Button>
+                  <Button variant="danger" disabled={saving} onClick={() => remove(item)}>
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            )}
+          />
         )}
       </Card>
     </div>

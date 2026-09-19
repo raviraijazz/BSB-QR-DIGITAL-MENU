@@ -5,11 +5,20 @@ import Button from '../../components/Button'
 import Card from '../../components/Card'
 import EmptyState from '../../components/EmptyState'
 import Field, { inputClass } from '../../components/Field'
+import SortableList, { SortHandle } from '../../components/SortableList'
 import Spinner from '../../components/Spinner'
 import { emptyVariant, itemToFormPricing, pricingPayload, summaryPrice, validatePricing } from '../../lib/pricing'
+import { withSortOrder } from '../../lib/sort'
 import { uploadAsset } from '../../lib/upload'
 import { listCategories } from '../../services/categories'
-import { createMenuItem, deleteMenuItem, listMenuItems, updateMenuItem } from '../../services/menuItems'
+import {
+  createMenuItem,
+  deleteMenuItem,
+  duplicateMenuItem,
+  listMenuItems,
+  reorderMenuItems,
+  updateMenuItem,
+} from '../../services/menuItems'
 
 const empty = {
   category_id: '',
@@ -30,6 +39,7 @@ export default function Menu() {
   const [editing, setEditing] = useState(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   async function load() {
     if (!restaurant) return
@@ -118,7 +128,10 @@ export default function Menu() {
     }
     const result = editing
       ? await updateMenuItem(editing.id, restaurant.id, payload)
-      : await createMenuItem(restaurant.id, { ...payload, sort_order: items.length })
+      : await createMenuItem(restaurant.id, {
+          ...payload,
+          sort_order: items.filter((item) => item.category_id === form.category_id).length,
+        })
     setBusy(false)
     if (result.error) {
       setError(result.error.message)
@@ -146,6 +159,15 @@ export default function Menu() {
     setForm({ ...empty, category_id: categories[0]?.id || '' })
   }
 
+  function itemsInCategory(categoryId) {
+    return items.filter((item) => item.category_id === categoryId)
+  }
+
+  function replaceCategory(categoryId, nextCategoryItems) {
+    const others = items.filter((item) => item.category_id !== categoryId)
+    return [...others, ...withSortOrder(nextCategoryItems)]
+  }
+
   async function toggle(item) {
     await updateMenuItem(item.id, restaurant.id, { is_available: !item.is_available })
     load()
@@ -157,9 +179,40 @@ export default function Menu() {
     load()
   }
 
+  async function duplicate(item) {
+    if (saving || busy) return
+    const current = itemsInCategory(item.category_id)
+    setSaving(true)
+    setError('')
+    const { error: nextError, ordered } = await duplicateMenuItem(restaurant.id, item, current)
+    setSaving(false)
+    if (nextError) {
+      setError(nextError.message)
+      load()
+      return
+    }
+    setItems(replaceCategory(item.category_id, ordered))
+  }
+
+  async function onReorder(categoryId, next, previous) {
+    if (saving) return
+    setSaving(true)
+    setError('')
+    setItems(replaceCategory(categoryId, next))
+    const { error: nextError } = await reorderMenuItems(restaurant.id, categoryId, next)
+    setSaving(false)
+    if (nextError) {
+      setError(nextError.message)
+      setItems(replaceCategory(categoryId, previous))
+    }
+  }
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <h1 className="font-display text-3xl">Menu items</h1>
+      <div>
+        <h1 className="font-display text-3xl">Menu items</h1>
+        <p className="mt-1 text-sm text-muted">Drag the handle to change the order shown on your public menu.</p>
+      </div>
       <Card title={editing ? 'Edit item' : 'Add item'}>
         <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
           <Field label="Category">
@@ -262,26 +315,65 @@ export default function Menu() {
             {editing ? <Button variant="secondary" onClick={cancelEdit}>Cancel</Button> : null}
           </div>
         </form>
-        <div className="mt-4"><Alert>{error}</Alert></div>
+        <div className="mt-4">
+          <Alert>{error}</Alert>
+          {saving ? <p className="mt-2 text-xs text-muted">Saving order...</p> : null}
+        </div>
       </Card>
-      <Card title="All items">
-        {items.length === 0 ? <p className="text-sm text-muted">No items yet.</p> : (
-          <ul className="space-y-3">
-            {items.map((item) => (
-              <li key={item.id} className="flex items-center gap-4 rounded-xl border border-line p-3">
-                {item.image_url ? <img src={item.image_url} alt="" className="h-14 w-14 rounded-lg object-cover" /> : <div className="h-14 w-14 rounded-lg bg-paper" />}
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">{item.name}</p>
-                  <p className="text-sm text-muted">{summaryPrice(item)} · {item.is_available ? 'Available' : 'Hidden'}</p>
-                </div>
-                <Button variant="secondary" onClick={() => toggle(item)}>{item.is_available ? 'Disable' : 'Enable'}</Button>
-                <Button variant="secondary" onClick={() => startEdit(item)}>Edit</Button>
-                <Button variant="danger" onClick={() => remove(item)}>Delete</Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      {categories.map((category) => {
+        const categoryItems = itemsInCategory(category.id)
+        return (
+          <Card key={category.id} title={category.name}>
+            {categoryItems.length === 0 ? (
+              <p className="text-sm text-muted">No items in this category.</p>
+            ) : (
+              <SortableList
+                items={categoryItems}
+                getId={(item) => item.id}
+                disabled={saving}
+                onReorder={(next, previous) => onReorder(category.id, next, previous)}
+                className="space-y-3"
+                renderItem={(item, { dragging, handleProps, disabled }) => (
+                  <div
+                    className={`flex flex-col gap-3 rounded-xl border border-line p-3 sm:flex-row sm:items-center ${
+                      dragging ? 'bg-white shadow-sm ring-1 ring-forest' : ''
+                    }`}
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <SortHandle handleProps={handleProps} disabled={disabled} label={`Reorder ${item.name}`} />
+                      {item.image_url ? (
+                        <img src={item.image_url} alt="" className="h-14 w-14 rounded-lg object-cover" />
+                      ) : (
+                        <div className="h-14 w-14 rounded-lg bg-paper" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">{item.name}</p>
+                        <p className="text-sm text-muted">
+                          {summaryPrice(item)} · {item.is_available ? 'Available' : 'Hidden'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 sm:justify-end">
+                      <Button variant="secondary" disabled={saving} onClick={() => duplicate(item)}>
+                        Duplicate
+                      </Button>
+                      <Button variant="secondary" disabled={saving} onClick={() => startEdit(item)}>
+                        Edit
+                      </Button>
+                      <Button variant="secondary" disabled={saving} onClick={() => toggle(item)}>
+                        {item.is_available ? 'Disable' : 'Enable'}
+                      </Button>
+                      <Button variant="danger" disabled={saving} onClick={() => remove(item)}>
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              />
+            )}
+          </Card>
+        )
+      })}
     </div>
   )
 }
