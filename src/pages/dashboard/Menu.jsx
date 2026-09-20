@@ -42,17 +42,25 @@ export default function Menu() {
   const [saving, setSaving] = useState(false)
 
   async function load() {
-    if (!restaurant) return
+    if (!restaurant) {
+      setCategories([])
+      setItems([])
+      return
+    }
     const [cats, menu] = await Promise.all([listCategories(restaurant.id), listMenuItems(restaurant.id)])
     setCategories(cats.data)
     setItems(menu.data)
     setError(cats.error?.message || menu.error?.message || '')
-    setForm((current) => ({ ...current, category_id: current.category_id || cats.data[0]?.id || '' }))
+    setEditing(null)
+    setForm({ ...empty, category_id: cats.data[0]?.id || '' })
   }
 
   useEffect(() => {
+    setCategories([])
+    setItems([])
+    setError('')
     load()
-  }, [restaurant])
+  }, [restaurant?.id])
 
   if (loading) return <Spinner />
   if (!restaurant) {
@@ -68,7 +76,7 @@ export default function Menu() {
   if (categories.length === 0) {
     return (
       <EmptyState
-        title="Add a category first"
+        title={`${restaurant.name} doesn't have any categories yet.`}
         body="Create at least one category, then add dishes to it."
         actionTo="/dashboard/categories"
         actionLabel="Add categories"
@@ -211,7 +219,9 @@ export default function Menu() {
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
         <h1 className="font-display text-3xl">Menu items</h1>
-        <p className="mt-1 text-sm text-muted">Drag the handle to change the order shown on your public menu.</p>
+        <p className="mt-1 text-sm text-muted">
+          {restaurant.name}: drag the handle to change the order shown on this restaurant's public menu.
+        </p>
       </div>
       <Card title={editing ? 'Edit item' : 'Add item'}>
         <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
@@ -325,7 +335,7 @@ export default function Menu() {
         return (
           <Card key={category.id} title={category.name}>
             {categoryItems.length === 0 ? (
-              <p className="text-sm text-muted">No items in this category.</p>
+              <p className="text-sm text-muted">{restaurant.name} doesn't have any menu items in this category yet.</p>
             ) : (
               <SortableList
                 items={categoryItems}

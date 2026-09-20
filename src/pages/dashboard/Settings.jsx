@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import Alert from '../../components/Alert'
 import Button from '../../components/Button'
@@ -17,6 +17,12 @@ export default function Settings() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    setSlugInput(restaurant?.slug || '')
+    setError('')
+    setNotice('')
+  }, [restaurant?.id])
 
   if (loading) return <Spinner />
   if (!restaurant) {
@@ -61,7 +67,7 @@ export default function Settings() {
         <form onSubmit={onSlug} className="space-y-4">
           <Alert>{error}</Alert>
           <Alert type="success">{notice}</Alert>
-          <Field label="Slug" hint={`Current: /menu/${restaurant.slug}`}>
+          <Field label="Slug" hint={`${restaurant.name}: /menu/${restaurant.slug}`}>
             <input className={inputClass} value={slugInput} onChange={(e) => setSlugInput(e.target.value)} />
           </Field>
           <Button type="submit" disabled={busy}>{busy ? 'Saving...' : 'Update slug'}</Button>

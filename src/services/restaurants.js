@@ -1,13 +1,13 @@
 import { supabase } from '../lib/supabase'
 import { toSlug, withSuffix } from '../lib/slug'
 
-export async function getMyRestaurant(userId) {
+export async function listMyRestaurants(userId) {
   const { data, error } = await supabase
     .from('restaurants')
     .select('*')
     .eq('user_id', userId)
-    .maybeSingle()
-  return { data, error }
+    .order('created_at', { ascending: true })
+  return { data: data ?? [], error }
 }
 
 export async function getPublicRestaurant(slug) {
@@ -66,4 +66,24 @@ export async function updateSlug(restaurantId, userId, nameOrSlug) {
     .select()
     .single()
   return { data, error }
+}
+
+export function activeRestaurantKey(userId) {
+  return `bsb-active-restaurant:${userId}`
+}
+
+export function readActiveRestaurantId(userId) {
+  try {
+    return localStorage.getItem(activeRestaurantKey(userId)) || ''
+  } catch {
+    return ''
+  }
+}
+
+export function writeActiveRestaurantId(userId, restaurantId) {
+  try {
+    if (restaurantId) localStorage.setItem(activeRestaurantKey(userId), restaurantId)
+  } catch {
+    /* ignore */
+  }
 }

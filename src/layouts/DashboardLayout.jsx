@@ -1,4 +1,5 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import RestaurantSwitcher from '../components/RestaurantSwitcher'
 import { useAuth } from '../hooks/useAuth'
 import { useRestaurant } from '../hooks/useRestaurant'
 
@@ -13,26 +14,32 @@ const links = [
 
 export default function DashboardLayout() {
   const { user, signOut } = useAuth()
-  const { restaurant, loading, refresh, setRestaurant } = useRestaurant()
+  const { restaurants, restaurant, loading, refresh, setRestaurant, selectRestaurant } = useRestaurant()
   const navigate = useNavigate()
+  const location = useLocation()
 
   async function handleSignOut() {
     await signOut()
     navigate('/')
   }
 
+  function handleSelect(id) {
+    selectRestaurant(id)
+    if (location.search.includes('new=1')) navigate('/dashboard/restaurant', { replace: true })
+  }
+
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[240px_1fr]">
       <aside className="border-b border-line bg-card lg:border-b-0 lg:border-r">
-        <div className="flex items-center justify-between px-5 py-4 lg:block">
-          <div>
+        <div className="flex items-start justify-between gap-4 px-5 py-4 lg:block">
+          <div className="min-w-0 flex-1">
             <p className="font-display text-lg">BSB</p>
-            <p className="text-xs text-muted">{restaurant?.name || 'Digital menu'}</p>
+            <RestaurantSwitcher restaurants={restaurants} restaurant={restaurant} onSelect={handleSelect} />
           </div>
           <button
             type="button"
             onClick={handleSignOut}
-            className="text-sm text-muted hover:text-ink lg:mt-6 lg:block"
+            className="shrink-0 text-sm text-muted hover:text-ink lg:mt-4 lg:block"
           >
             Sign out
           </button>
@@ -55,7 +62,7 @@ export default function DashboardLayout() {
         </nav>
       </aside>
       <div className="px-4 py-6 sm:px-8">
-        <Outlet context={{ user, restaurant, loading, refresh, setRestaurant }} />
+        <Outlet context={{ user, restaurants, restaurant, loading, refresh, setRestaurant, selectRestaurant }} />
       </div>
     </div>
   )

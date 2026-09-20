@@ -28,7 +28,7 @@ export default function Overview() {
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
         <h1 className="font-display text-3xl">{restaurant.name}</h1>
-        <p className="mt-1 text-sm text-muted">Manage your digital menu from here.</p>
+        <p className="mt-1 text-sm text-muted">Manage this restaurant from here. Switch restaurants from the sidebar.</p>
       </div>
       {restaurant.slug ? (
         <p className="rounded-xl bg-white px-4 py-3 text-sm">

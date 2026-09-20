@@ -26,15 +26,20 @@ export default function Categories() {
   const [saving, setSaving] = useState(false)
 
   async function load() {
-    if (!restaurant) return
+    if (!restaurant) {
+      setItems([])
+      return
+    }
     const { data, error: nextError } = await listCategories(restaurant.id)
     if (nextError) setError(nextError.message)
     else setItems(data)
   }
 
   useEffect(() => {
+    setItems([])
+    setError('')
     load()
-  }, [restaurant])
+  }, [restaurant?.id])
 
   if (loading) return <Spinner />
   if (!restaurant) {
@@ -107,7 +112,9 @@ export default function Categories() {
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <h1 className="font-display text-3xl">Categories</h1>
-        <p className="mt-1 text-sm text-muted">Drag the handle to change the order shown on your public menu.</p>
+        <p className="mt-1 text-sm text-muted">
+          {restaurant.name}: drag the handle to change the order shown on this restaurant's public menu.
+        </p>
       </div>
       <Card title="Add category">
         <form onSubmit={onCreate} className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -125,7 +132,7 @@ export default function Categories() {
       </Card>
       <Card title="Your categories">
         {items.length === 0 ? (
-          <p className="text-sm text-muted">No categories yet.</p>
+          <p className="text-sm text-muted">{restaurant.name} doesn't have any categories yet.</p>
         ) : (
           <SortableList
             items={items}

@@ -109,7 +109,7 @@ export default function Qr() {
     return () => {
       cancelled = true
     }
-  }, [hasLogo, logoUrl])
+  }, [hasLogo, logoUrl, restaurant?.id])
 
   useEffect(() => {
     const canvas = previewRef.current
@@ -142,7 +142,7 @@ export default function Qr() {
     return (
       <EmptyState
         title="Create your restaurant first"
-        body="A QR code is generated from your restaurant menu URL."
+        body="A QR code is generated from the selected restaurant's menu URL."
         actionTo="/dashboard/restaurant"
         actionLabel="Restaurant setup"
       />

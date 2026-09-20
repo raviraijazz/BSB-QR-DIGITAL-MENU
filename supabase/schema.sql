@@ -2,7 +2,7 @@
 
 create table if not exists public.restaurants (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null unique references auth.users (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
   name text not null,
   phone text default '',
   address text default '',
@@ -34,6 +34,7 @@ create table if not exists public.menu_items (
 );
 
 create index if not exists restaurants_slug_idx on public.restaurants (slug);
+create index if not exists restaurants_user_id_idx on public.restaurants (user_id);
 create index if not exists categories_restaurant_idx on public.categories (restaurant_id, sort_order);
 create index if not exists menu_items_restaurant_idx on public.menu_items (restaurant_id, category_id, sort_order);
 
