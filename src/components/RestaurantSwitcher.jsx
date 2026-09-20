@@ -23,7 +23,7 @@ export default function RestaurantSwitcher({ restaurants, restaurant, onSelect }
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center justify-between gap-2 rounded-xl border border-line bg-white px-3 py-2 text-left text-sm hover:border-ink"
+        className="flex w-full items-center justify-between gap-2 rounded-xl border border-line bg-white px-3 py-2 text-left text-sm hover:border-forest"
       >
         <span className="min-w-0 truncate font-medium">{restaurant?.name || 'Select restaurant'}</span>
         <span className="shrink-0 text-xs text-muted">{open ? '▲' : '▼'}</span>
@@ -41,7 +41,7 @@ export default function RestaurantSwitcher({ restaurants, restaurant, onSelect }
                   setOpen(false)
                 }}
                 className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm ${
-                  active ? 'bg-paper font-medium text-ink' : 'text-stone-600 hover:bg-paper'
+                  active ? 'bg-paper font-medium text-forest' : 'text-stone-600 hover:bg-paper'
                 }`}
               >
                 <span className="w-4 shrink-0">{active ? '✓' : ''}</span>
