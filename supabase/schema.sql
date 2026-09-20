@@ -29,6 +29,7 @@ create table if not exists public.menu_items (
   variants jsonb not null default '[]'::jsonb,
   image_url text,
   is_available boolean not null default true,
+  food_type text not null default 'veg' check (food_type in ('veg', 'non_veg')),
   sort_order int not null default 0,
   created_at timestamptz not null default now()
 );

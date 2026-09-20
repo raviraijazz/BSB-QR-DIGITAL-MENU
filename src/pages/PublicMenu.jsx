@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import FoodTypeMark from '../components/FoodTypeMark'
 import Spinner from '../components/Spinner'
 import { displayPrices } from '../lib/pricing'
 import { getPublicRestaurant } from '../services/restaurants'
@@ -101,7 +102,10 @@ export default function PublicMenu() {
                         ) : null}
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-3">
-                            <h3 className="font-medium">{item.name}</h3>
+                            <h3 className="flex min-w-0 items-center gap-2 font-medium">
+                              <FoodTypeMark value={item.food_type} />
+                              <span className="min-w-0">{item.name}</span>
+                            </h3>
                             {single ? <p className="shrink-0 text-sm">{prices[0].label}</p> : null}
                           </div>
                           {item.description ? <p className="mt-1 text-sm text-muted">{item.description}</p> : null}
@@ -115,7 +119,11 @@ export default function PublicMenu() {
                               ))}
                             </ul>
                           ) : null}
-                          {!item.is_available ? <p className="mt-2 text-xs uppercase tracking-wide text-accent">Currently unavailable</p> : null}
+                          {!item.is_available ? (
+                            <span className="mt-2 inline-block rounded-full border border-stone-300 bg-stone-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-stone-700">
+                              Sold Out
+                            </span>
+                          ) : null}
                         </div>
                       </div>
                     </li>

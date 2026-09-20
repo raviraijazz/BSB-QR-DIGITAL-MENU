@@ -7,6 +7,8 @@ import EmptyState from '../../components/EmptyState'
 import Field, { inputClass } from '../../components/Field'
 import SortableList, { SortHandle } from '../../components/SortableList'
 import Spinner from '../../components/Spinner'
+import FoodTypeMark, { FoodTypeText } from '../../components/FoodTypeMark'
+import { FOOD_TYPES, normalizeFoodType } from '../../lib/foodType'
 import { emptyVariant, itemToFormPricing, pricingPayload, summaryPrice, validatePricing } from '../../lib/pricing'
 import { withSortOrder } from '../../lib/sort'
 import { uploadAsset } from '../../lib/upload'
@@ -29,6 +31,7 @@ const empty = {
   variants: [emptyVariant()],
   image_url: '',
   is_available: true,
+  food_type: 'veg',
 }
 
 export default function Menu() {
@@ -40,6 +43,7 @@ export default function Menu() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [togglingId, setTogglingId] = useState('')
 
   async function load() {
     if (!restaurant) {
@@ -133,6 +137,7 @@ export default function Menu() {
       variants: pricing.variants,
       image_url: form.image_url,
       is_available: form.is_available,
+      food_type: normalizeFoodType(form.food_type),
     }
     const result = editing
       ? await updateMenuItem(editing.id, restaurant.id, payload)
@@ -158,6 +163,7 @@ export default function Menu() {
       description: item.description || '',
       image_url: item.image_url || '',
       is_available: item.is_available,
+      food_type: normalizeFoodType(item.food_type),
       ...itemToFormPricing(item),
     })
   }
@@ -176,9 +182,18 @@ export default function Menu() {
     return [...others, ...withSortOrder(nextCategoryItems)]
   }
 
-  async function toggle(item) {
-    await updateMenuItem(item.id, restaurant.id, { is_available: !item.is_available })
-    load()
+  async function setAvailability(item, next) {
+    if (togglingId || saving || next === item.is_available) return
+    const previous = item.is_available
+    setTogglingId(item.id)
+    setError('')
+    setItems((current) => current.map((row) => (row.id === item.id ? { ...row, is_available: next } : row)))
+    const { error: nextError } = await updateMenuItem(item.id, restaurant.id, { is_available: next })
+    setTogglingId('')
+    if (nextError) {
+      setError(nextError.message)
+      setItems((current) => current.map((row) => (row.id === item.id ? { ...row, is_available: previous } : row)))
+    }
   }
 
   async function remove(item) {
@@ -305,10 +320,27 @@ export default function Menu() {
               </div>
             )}
           </div>
-          <Field label="Available">
+          <Field label="Food type">
+            <div className="flex flex-wrap gap-2">
+              {FOOD_TYPES.map((type) => (
+                <button
+                  key={type.id}
+                  type="button"
+                  className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${
+                    form.food_type === type.id ? 'bg-ink text-white' : 'border border-line bg-white'
+                  }`}
+                  onClick={() => set('food_type', type.id)}
+                >
+                  <FoodTypeMark value={type.id} />
+                  {type.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <Field label="Availability">
             <select className={inputClass} value={form.is_available ? 'yes' : 'no'} onChange={(e) => set('is_available', e.target.value === 'yes')}>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
+              <option value="yes">Available</option>
+              <option value="no">Sold Out</option>
             </select>
           </Field>
           <div className="sm:col-span-2">
@@ -357,9 +389,12 @@ export default function Menu() {
                         <div className="h-14 w-14 rounded-lg bg-paper" />
                       )}
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium">{item.name}</p>
+                        <p className="flex items-center gap-2 font-medium">
+                          <FoodTypeMark value={item.food_type} />
+                          <span className="min-w-0 truncate">{item.name}</span>
+                        </p>
                         <p className="text-sm text-muted">
-                          {summaryPrice(item)} · {item.is_available ? 'Available' : 'Hidden'}
+                          <FoodTypeText value={item.food_type} /> · {summaryPrice(item)} · {item.is_available ? 'Available' : 'Sold Out'}
                         </p>
                       </div>
                     </div>
@@ -370,9 +405,16 @@ export default function Menu() {
                       <Button variant="secondary" disabled={saving} onClick={() => startEdit(item)}>
                         Edit
                       </Button>
-                      <Button variant="secondary" disabled={saving} onClick={() => toggle(item)}>
-                        {item.is_available ? 'Disable' : 'Enable'}
-                      </Button>
+                      <select
+                        className={`${inputClass} w-[8.5rem]`}
+                        disabled={saving || togglingId === item.id}
+                        value={item.is_available ? 'available' : 'sold_out'}
+                        onChange={(e) => setAvailability(item, e.target.value === 'available')}
+                        aria-label={`${item.name} availability`}
+                      >
+                        <option value="available">{togglingId === item.id ? 'Saving...' : 'Available'}</option>
+                        <option value="sold_out">Sold Out</option>
+                      </select>
                       <Button variant="danger" disabled={saving} onClick={() => remove(item)}>
                         Delete
                       </Button>

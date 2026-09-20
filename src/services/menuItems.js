@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { normalizeFoodType } from '../lib/foodType'
 
 export async function listMenuItems(restaurantId) {
   const { data, error } = await supabase
@@ -22,6 +23,7 @@ export async function createMenuItem(restaurantId, values) {
       variants: values.variants || [],
       image_url: values.image_url || null,
       is_available: values.is_available !== false,
+      food_type: normalizeFoodType(values.food_type),
       sort_order: values.sort_order ?? 0,
     })
     .select()
@@ -74,6 +76,7 @@ export async function duplicateMenuItem(restaurantId, item, orderedInCategory) {
     variants,
     image_url: item.image_url || null,
     is_available: item.is_available !== false,
+    food_type: normalizeFoodType(item.food_type),
     sort_order: (item.sort_order ?? index) + 1,
   })
   if (error) return { data: null, error }
@@ -93,7 +96,7 @@ export async function getPublicMenu(restaurantId) {
       .order('created_at', { ascending: true }),
     supabase
       .from('menu_items')
-      .select('id, category_id, name, description, price, variants, image_url, is_available, sort_order')
+      .select('id, category_id, name, description, price, variants, image_url, is_available, food_type, sort_order')
       .eq('restaurant_id', restaurantId)
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: true }),
