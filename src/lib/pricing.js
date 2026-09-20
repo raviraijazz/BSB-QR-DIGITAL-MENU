@@ -89,6 +89,19 @@ export function displayPrices(item) {
   return [{ name: '', label: formatPrice(item?.price), price: item?.price }]
 }
 
+export function menuVariantRows(item) {
+  const stored = Array.isArray(item?.variants) ? item.variants : []
+  if (stored.length > 0) {
+    return stored.map((variant) => ({
+      name: variant.name || '',
+      label: formatPrice(variant.price),
+      price: variant.price,
+      is_available: variant.is_available !== false,
+    }))
+  }
+  return [{ name: '', label: formatPrice(item?.price), price: item?.price, is_available: true }]
+}
+
 export function summaryPrice(item) {
   const rows = displayPrices(item)
   if (rows.length === 0) return 'No price'
