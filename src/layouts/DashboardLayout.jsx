@@ -42,19 +42,19 @@ export default function DashboardLayout() {
         <p className="mt-0.5 text-[11px] uppercase tracking-[0.16em] text-muted">Digital menu</p>
         <RestaurantSwitcher restaurants={restaurants} restaurant={restaurant} onSelect={handleSelect} />
       </div>
-      <nav className="flex flex-col gap-0.5 px-3 pb-3">
+      <nav className="flex flex-col gap-1 px-3 pb-3">
         {links.map((link) => (
           <NavLink
             key={link.to}
             to={link.to}
             end={link.end}
             className={({ isActive }) =>
-              `flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition ${
+              `flex items-center gap-2.5 rounded-xl px-3 py-[7px] text-sm transition ${
                 isActive ? 'bg-forest text-white' : 'text-stone-600 hover:bg-paper hover:text-ink'
               }`
             }
           >
-            <NavIcon name={link.icon} />
+            <NavIcon name={link.icon} className="h-4 w-4" />
             {link.label}
           </NavLink>
         ))}
@@ -100,7 +100,7 @@ export default function DashboardLayout() {
           <p className="min-w-0 truncate text-sm font-medium">{restaurant?.name || 'BSB'}</p>
           <span className="w-10" />
         </div>
-        <div className="px-4 py-6 sm:px-8">
+        <div className="px-4 py-5 sm:px-7">
           <Outlet context={{ user, restaurants, restaurant, loading, refresh, setRestaurant, selectRestaurant }} />
         </div>
       </div>

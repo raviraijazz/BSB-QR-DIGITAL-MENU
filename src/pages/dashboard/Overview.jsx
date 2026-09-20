@@ -13,18 +13,20 @@ import { listMenuItems } from '../../services/menuItems'
 
 function StatCard({ icon, label, value, hint }) {
   return (
-    <Card>
-      <div className="flex items-start justify-between gap-3">
-        <div className="grid h-9 w-9 place-items-center rounded-xl bg-paper text-forest">
-          <NavIcon name={icon} />
+    <Card compact>
+      <div className="flex items-center gap-3">
+        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-paper text-forest">
+          <NavIcon name={icon} className="h-4 w-4" />
         </div>
+        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">{label}</p>
       </div>
-      <p className="mt-4 text-xs font-medium uppercase tracking-[0.14em] text-muted">{label}</p>
-      <p className="mt-1 font-display text-3xl leading-none">{value}</p>
-      <p className="mt-2 text-xs text-muted">{hint}</p>
+      <p className="mt-3 font-display text-[1.75rem] leading-none">{value}</p>
+      <p className="mt-1 text-xs text-muted">{hint}</p>
     </Card>
   )
 }
+
+const compactBtn = 'h-9 px-3 py-0 text-[13px]'
 
 export default function Overview() {
   const { restaurant, loading } = useOutletContext()
@@ -124,22 +126,22 @@ export default function Overview() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="mx-auto max-w-6xl space-y-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
-          <h1 className="font-display text-2xl sm:text-[1.75rem]">{restaurant.name}</h1>
-          <p className="mt-1 text-sm text-muted">Your digital menu dashboard</p>
+          <h1 className="font-display text-2xl leading-tight">{restaurant.name}</h1>
+          <p className="mt-0.5 text-sm text-muted">Your digital menu dashboard</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <a href={url} target="_blank" rel="noreferrer">
-            <Button variant="secondary">
-              <NavIcon name="external" />
+            <Button variant="secondary" className={compactBtn}>
+              <NavIcon name="external" className="h-4 w-4" />
               View Public Menu
             </Button>
           </a>
           <Link to="/dashboard/qr">
-            <Button>
-              <NavIcon name="qr" />
+            <Button className={compactBtn}>
+              <NavIcon name="qr" className="h-4 w-4" />
               QR Studio
             </Button>
           </Link>
@@ -148,14 +150,14 @@ export default function Overview() {
 
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
 
-      <Card className="p-4 sm:p-5">
+      <Card compact className="!p-3 sm:!p-4">
         <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Public menu</p>
-        <p className="mt-2 break-all text-sm text-ink">{url}</p>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <p className="mt-1 truncate text-sm text-ink">{url}</p>
+        <div className="mt-2 flex flex-wrap gap-2">
           <a href={url} target="_blank" rel="noreferrer">
-            <Button variant="secondary">Open Menu</Button>
+            <Button variant="secondary" className={compactBtn}>Open Menu</Button>
           </a>
-          <Button variant="secondary" onClick={copyLink}>
+          <Button variant="secondary" className={compactBtn} onClick={copyLink}>
             {copied ? 'Copied' : 'Copy Link'}
           </Button>
         </div>
@@ -168,66 +170,74 @@ export default function Overview() {
         <StatCard icon="sold" label="Sold Out" value={busy ? '—' : stats.soldOut} hint="Hidden as unavailable" />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-        <Card title="Quick actions">
+      <div className="grid items-stretch gap-3 lg:grid-cols-[1.2fr_0.8fr]">
+        <Card title="Quick actions" compact className="h-full">
           <div className="grid gap-2 sm:grid-cols-2">
-            <Link to="/dashboard/menu">
-              <Button className="w-full">
-                <NavIcon name="plus" />
+            <Link to="/dashboard/menu" className="sm:col-span-2">
+              <Button className={`w-full ${compactBtn}`}>
+                <NavIcon name="plus" className="h-4 w-4" />
                 Add Menu Item
               </Button>
             </Link>
             <Link to="/dashboard/categories">
-              <Button variant="secondary" className="w-full">Manage Categories</Button>
+              <Button variant="secondary" className={`w-full ${compactBtn}`}>Manage Categories</Button>
             </Link>
             <Link to="/dashboard/qr">
-              <Button variant="secondary" className="w-full">QR Code Studio</Button>
+              <Button variant="secondary" className={`w-full ${compactBtn}`}>QR Code Studio</Button>
             </Link>
             <Link to="/dashboard/restaurant">
-              <Button variant="secondary" className="w-full">Restaurant Profile</Button>
+              <Button variant="secondary" className={`w-full ${compactBtn}`}>Restaurant Profile</Button>
             </Link>
-            <a href={url} target="_blank" rel="noreferrer" className="sm:col-span-2">
-              <Button variant="secondary" className="w-full">View Public Menu</Button>
+            <a href={url} target="_blank" rel="noreferrer">
+              <Button variant="secondary" className={`w-full ${compactBtn}`}>View Public Menu</Button>
             </a>
           </div>
         </Card>
 
-        <Card title="Menu status">
+        <Card title="Menu status" compact className="flex h-full flex-col">
           {stats.items === 0 ? (
-            <div>
+            <div className="flex flex-1 flex-col justify-center">
               <p className="text-sm text-muted">No menu items yet</p>
               <Link to="/dashboard/menu" className="mt-3 inline-block">
-                <Button>Add your first item</Button>
+                <Button className={compactBtn}>Add your first item</Button>
               </Link>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="flex flex-1 flex-col justify-center space-y-3">
               <div>
                 <div className="flex justify-between text-sm">
                   <span>Available items</span>
                   <span>{stats.available}</span>
                 </div>
-                <div className="mt-1 h-2 overflow-hidden rounded-full bg-paper">
-                  <div className="h-full bg-forest" style={{ width: `${Math.round((stats.available / stats.items) * 100)}%` }} />
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-paper">
+                  <div className="h-full rounded-full bg-forest" style={{ width: `${Math.round((stats.available / stats.items) * 100)}%` }} />
                 </div>
               </div>
-              <p className="text-sm text-muted">Sold out items: {stats.soldOut}</p>
-              <p className="text-sm text-muted">Total items: {stats.items}</p>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted">Sold out items</span>
+                <span>{stats.soldOut}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted">Total items</span>
+                <span>{stats.items}</span>
+              </div>
             </div>
           )}
         </Card>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+      <div className="grid items-stretch gap-3 lg:grid-cols-[0.9fr_1.1fr]">
         <Card
+          className="flex h-full flex-col"
+          compact
           title="Restaurant"
           action={
-            <Link to="/dashboard/restaurant" className="text-sm underline">
+            <Link to="/dashboard/restaurant" className="text-sm text-forest underline">
               Edit
             </Link>
           }
         >
-          <div className="flex gap-3">
+          <div className="flex flex-1 items-start gap-3">
             {restaurant.logo_url ? (
               <img src={restaurant.logo_url} alt="" className="h-14 w-14 rounded-xl object-cover" />
             ) : (
@@ -251,27 +261,28 @@ export default function Overview() {
           ) : null}
         </Card>
 
-        <Card title="Your QR code">
-          <div className="flex items-center gap-4">
-            <div className="grid h-24 w-24 shrink-0 place-items-center rounded-xl border border-line bg-white">
-              {qrPreview ? <img src={qrPreview} alt="" className="h-20 w-20" /> : <NavIcon name="qr" className="h-8 w-8 text-muted" />}
+        <Card title="Your QR code" compact className="flex h-full flex-col">
+          <div className="flex flex-1 items-center gap-4">
+            <div className="grid h-28 w-28 shrink-0 place-items-center rounded-xl border border-line bg-white">
+              {qrPreview ? <img src={qrPreview} alt="" className="h-24 w-24" /> : <NavIcon name="qr" className="h-8 w-8 text-muted" />}
             </div>
             <div className="min-w-0">
               <p className="text-sm text-muted">Your QR always opens the permanent public menu.</p>
               <Link to="/dashboard/qr" className="mt-3 inline-block">
-                <Button variant="secondary">Open QR Studio</Button>
+                <Button variant="secondary" className={compactBtn}>Open QR Studio</Button>
               </Link>
             </div>
           </div>
         </Card>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-2">
         <Card
+          compact
           title="Categories"
           action={
             categories.length > 6 ? (
-              <Link to="/dashboard/categories" className="text-sm underline">
+              <Link to="/dashboard/categories" className="text-sm text-forest underline">
                 View All Categories
               </Link>
             ) : null
@@ -280,10 +291,13 @@ export default function Overview() {
           {shownCategories.length === 0 ? (
             <p className="text-sm text-muted">No categories yet.</p>
           ) : (
-            <ul className="divide-y divide-line">
-              {shownCategories.map((category) => (
-                <li key={category.id} className="flex items-center justify-between py-2.5 text-sm">
-                  <span className="min-w-0 truncate">{category.name}</span>
+            <ul>
+              {shownCategories.map((category, index) => (
+                <li
+                  key={category.id}
+                  className={`flex items-center justify-between py-2.5 text-sm ${index > 0 ? 'border-t border-line' : ''}`}
+                >
+                  <span className="min-w-0 truncate font-medium uppercase tracking-wide">{category.name}</span>
                   <span className="shrink-0 text-muted">{category.count} items</span>
                 </li>
               ))}
@@ -292,9 +306,10 @@ export default function Overview() {
         </Card>
 
         <Card
+          compact
           title="Recent menu items"
           action={
-            <Link to="/dashboard/menu" className="text-sm underline">
+            <Link to="/dashboard/menu" className="text-sm text-forest underline">
               Manage
             </Link>
           }
@@ -303,26 +318,28 @@ export default function Overview() {
             <div>
               <p className="text-sm text-muted">No menu items added yet</p>
               <Link to="/dashboard/menu" className="mt-3 inline-block">
-                <Button>Add Menu Item</Button>
+                <Button className={compactBtn}>Add Menu Item</Button>
               </Link>
             </div>
           ) : (
-            <ul className="space-y-3">
+            <ul className="divide-y divide-line">
               {recentItems.map((item) => (
-                <li key={item.id} className="flex items-center gap-3">
+                <li key={item.id} className="flex items-center gap-3 py-2.5">
                   {item.image_url ? (
-                    <img src={item.image_url} alt="" className="h-11 w-11 rounded-lg object-cover" />
+                    <img src={item.image_url} alt="" className="h-12 w-12 rounded-lg object-cover" />
                   ) : (
-                    <div className="h-11 w-11 rounded-lg bg-paper" />
+                    <div className="h-12 w-12 rounded-lg bg-paper" />
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-2 text-sm font-medium">
                       <FoodTypeMark value={item.food_type} />
                       <span className="min-w-0 truncate">{item.name}</span>
                     </p>
-                    <p className="truncate text-xs text-muted">{summaryPrice(item)}</p>
+                    <p className="truncate text-sm text-ink">{summaryPrice(item)}</p>
                   </div>
-                  <span className="shrink-0 text-xs text-muted">{item.is_available ? 'Available' : 'Sold Out'}</span>
+                  <span className={`shrink-0 text-xs ${item.is_available ? 'text-forest' : 'text-muted'}`}>
+                    {item.is_available ? 'Available' : 'Sold Out'}
+                  </span>
                 </li>
               ))}
             </ul>
