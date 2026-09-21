@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import FoodTypeMark from '../components/FoodTypeMark'
+import { normalizeFoodType } from '../lib/foodType'
 import { menuVariantRows } from '../lib/pricing'
 import { getPublicRestaurant } from '../services/restaurants'
 import { getPublicMenu } from '../services/menuItems'
+
+const MENU_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'veg', label: 'Veg' },
+  { id: 'non_veg', label: 'Non-Veg' },
+  { id: 'available', label: 'Available' },
+  { id: 'sold_out', label: 'Sold Out' },
+]
 
 function restaurantInitial(name) {
   const t = String(name || '').trim()
@@ -20,6 +29,14 @@ function itemMatches(item, category, query) {
   const description = String(item.description || '').toLowerCase()
   const categoryName = String(category.name || '').toLowerCase()
   return name.includes(query) || description.includes(query) || categoryName.includes(query)
+}
+
+function itemMatchesFilter(item, filter) {
+  if (filter === 'veg') return normalizeFoodType(item.food_type) === 'veg'
+  if (filter === 'non_veg') return normalizeFoodType(item.food_type) === 'non_veg'
+  if (filter === 'available') return item.is_available !== false
+  if (filter === 'sold_out') return item.is_available === false
+  return true
 }
 
 function MenuSkeleton() {
@@ -188,6 +205,29 @@ function MenuSearch({ value, onChange, onClear }) {
   )
 }
 
+function MenuFilters({ value, onChange }) {
+  return (
+    <div className="no-scrollbar mx-auto flex max-w-3xl gap-1.5 overflow-x-auto px-4 pt-2" role="group" aria-label="Filter menu items">
+      {MENU_FILTERS.map((option) => {
+        const on = value === option.id
+        return (
+          <button
+            key={option.id}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onChange(option.id)}
+            className={`shrink-0 rounded-full px-3 py-1.5 text-[12px] font-medium tracking-wide transition-colors ${
+              on ? 'bg-forest text-[#f5ead8]' : 'bg-paper text-muted ring-1 ring-line'
+            }`}
+          >
+            {option.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function CategorySections({ groups, searching }) {
   return (
     <div className="space-y-8 sm:space-y-10">
@@ -195,7 +235,7 @@ function CategorySections({ groups, searching }) {
         <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Search results</p>
       ) : null}
       {groups.map((category) => (
-        <section key={category.id} id={searching ? undefined : category.id} className={searching ? '' : 'scroll-mt-[7.5rem]'}>
+        <section key={category.id} id={searching ? undefined : category.id} className={searching ? '' : 'scroll-mt-[10rem]'}>
           <div className="mb-3 flex items-baseline justify-between gap-3">
             <h2 className="font-display text-xl tracking-wide text-ink sm:text-[1.35rem]">{category.name}</h2>
             <p className="text-[11px] uppercase tracking-[0.14em] text-muted">
@@ -223,6 +263,7 @@ export default function PublicMenu() {
   const [failed, setFailed] = useState(false)
   const [activeId, setActiveId] = useState('')
   const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState('all')
 
   useEffect(() => {
     let active = true
@@ -249,6 +290,7 @@ export default function PublicMenu() {
       setCategories(menu.categories)
       setItems(menu.items)
       setQuery('')
+      setFilter('all')
       setLoading(false)
     }
     load()
@@ -270,15 +312,18 @@ export default function PublicMenu() {
 
   const needle = normalizeQuery(query)
   const searching = needle.length > 0
+  const filtering = filter !== 'all'
   const results = useMemo(() => {
-    if (!searching) return grouped
+    if (!searching && !filtering) return grouped
     return grouped
       .map((category) => ({
         ...category,
-        items: category.items.filter((item) => itemMatches(item, category, needle)),
+        items: category.items.filter(
+          (item) => itemMatches(item, category, needle) && itemMatchesFilter(item, filter),
+        ),
       }))
       .filter((category) => category.items.length > 0)
-  }, [grouped, needle, searching])
+  }, [filter, filtering, grouped, needle, searching])
 
   useEffect(() => {
     if (!restaurant?.name) return
@@ -298,7 +343,7 @@ export default function PublicMenu() {
   }, [grouped])
 
   useEffect(() => {
-    if (searching || grouped.length === 0) return
+    if (searching || results.length === 0) return
     const observer = new IntersectionObserver(
       (entries) => {
         const visible = entries
@@ -306,14 +351,14 @@ export default function PublicMenu() {
           .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
         if (visible[0]?.target?.id) setActiveId(visible[0].target.id)
       },
-      { rootMargin: '-72px 0px -65% 0px', threshold: [0, 0.15] },
+      { rootMargin: '-140px 0px -65% 0px', threshold: [0, 0.15] },
     )
-    grouped.forEach((category) => {
+    results.forEach((category) => {
       const el = document.getElementById(category.id)
       if (el) observer.observe(el)
     })
     return () => observer.disconnect()
-  }, [grouped, searching])
+  }, [results, searching])
 
   useEffect(() => {
     if (searching || !activeId || !navRef.current) return
@@ -333,6 +378,10 @@ export default function PublicMenu() {
 
   function clearSearch() {
     setQuery('')
+  }
+
+  function clearFilters() {
+    setFilter('all')
   }
 
   if (loading) return <MenuSkeleton />
@@ -366,6 +415,7 @@ export default function PublicMenu() {
       {grouped.length > 0 ? (
         <div className="sticky top-0 z-20 border-b border-line bg-card/95 pb-2.5 backdrop-blur">
           <MenuSearch value={query} onChange={setQuery} onClear={clearSearch} />
+          <MenuFilters value={filter} onChange={setFilter} />
           <nav className="mt-2" aria-label="Menu categories">
             <div ref={navRef} className="no-scrollbar mx-auto flex max-w-3xl gap-1.5 overflow-x-auto px-4">
               {grouped.map((category) => {
@@ -395,13 +445,24 @@ export default function PublicMenu() {
             <p className="font-display text-xl text-ink">Menu coming soon</p>
             <p className="mt-2 text-sm text-muted">This restaurant has not added dishes yet.</p>
           </div>
-        ) : searching && results.length === 0 ? (
+        ) : results.length === 0 ? (
           <div className="rounded-2xl border border-line bg-card px-6 py-14 text-center">
-            <p className="font-display text-xl text-ink">No items found</p>
-            <p className="mt-2 text-sm text-muted">Try searching for another dish.</p>
+            <p className="font-display text-xl text-ink">No matching dishes found</p>
+            {searching && !filtering ? (
+              <p className="mt-2 text-sm text-muted">Try searching for another dish.</p>
+            ) : null}
+            {filtering ? (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="mt-4 rounded-full bg-forest px-4 py-2 text-sm font-medium text-[#f5ead8]"
+              >
+                Clear filters
+              </button>
+            ) : null}
           </div>
         ) : (
-          <CategorySections groups={searching ? results : grouped} searching={searching} />
+          <CategorySections groups={results} searching={searching} />
         )}
       </main>
 
