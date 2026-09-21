@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import FoodTypeMark from '../components/FoodTypeMark'
+import NavIcon from '../components/NavIcon'
 import { normalizeFoodType } from '../lib/foodType'
+import { menuUrl } from '../lib/menuUrl'
 import { menuVariantRows } from '../lib/pricing'
 import { getPublicRestaurant } from '../services/restaurants'
 import { getPublicMenu } from '../services/menuItems'
@@ -37,6 +39,150 @@ function itemMatchesFilter(item, filter) {
   if (filter === 'available') return item.is_available !== false
   if (filter === 'sold_out') return item.is_available === false
   return true
+}
+
+async function copyText(value) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value)
+      return true
+    }
+  } catch {
+    /* fallback below */
+  }
+  try {
+    const field = document.createElement('textarea')
+    field.value = value
+    field.setAttribute('readonly', '')
+    field.style.position = 'fixed'
+    field.style.left = '-9999px'
+    document.body.appendChild(field)
+    field.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(field)
+    return ok
+  } catch {
+    return false
+  }
+}
+
+function ShareMenu({ restaurant }) {
+  const wrapRef = useRef(null)
+  const [open, setOpen] = useState(false)
+  const [notice, setNotice] = useState('')
+
+  const url = restaurant?.slug ? menuUrl(restaurant.slug) : ''
+  const name = restaurant?.name || 'this restaurant'
+  const message = `Check out this digital menu from ${name}:\n${url}`
+
+  useEffect(() => {
+    if (!open) return
+    function onDoc(event) {
+      if (wrapRef.current && !wrapRef.current.contains(event.target)) setOpen(false)
+    }
+    function onKey(event) {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!notice) return
+    const timer = setTimeout(() => setNotice(''), 2200)
+    return () => clearTimeout(timer)
+  }, [notice])
+
+  async function copyLink() {
+    const ok = await copyText(url)
+    setOpen(false)
+    setNotice(ok ? 'Menu link copied!' : 'Could not copy the link.')
+  }
+
+  function shareWhatsApp() {
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer')
+    setOpen(false)
+  }
+
+  async function shareNative() {
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share({
+          title: `${name} Digital Menu`,
+          text: `Check out the digital menu from ${name}.`,
+          url,
+        })
+        setOpen(false)
+        return
+      } catch (err) {
+        if (err?.name === 'AbortError') {
+          setOpen(false)
+          return
+        }
+      }
+    }
+    await copyLink()
+  }
+
+  if (!url) return null
+
+  return (
+    <div ref={wrapRef} className="relative mt-3">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1.5 text-[12px] font-medium text-ink"
+      >
+        <NavIcon name="share" className="h-3.5 w-3.5" />
+        Share Menu
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute left-1/2 z-30 mt-2 w-48 -translate-x-1/2 rounded-2xl border border-line bg-card p-1.5 shadow-lg"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={shareWhatsApp}
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-paper"
+          >
+            WhatsApp
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={copyLink}
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-paper"
+          >
+            Copy Link
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={shareNative}
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-paper"
+          >
+            Share...
+          </button>
+        </div>
+      ) : null}
+      {notice ? (
+        <p
+          role="status"
+          className="pointer-events-none fixed bottom-5 left-1/2 z-40 -translate-x-1/2 rounded-full bg-forest px-3.5 py-2 text-xs font-medium text-[#f5ead8] shadow-md"
+        >
+          {notice}
+        </p>
+      ) : null}
+    </div>
+  )
 }
 
 function MenuSkeleton() {
@@ -409,6 +555,7 @@ export default function PublicMenu() {
               {restaurant.phone}
             </a>
           ) : null}
+          <ShareMenu restaurant={restaurant} />
         </div>
       </header>
 

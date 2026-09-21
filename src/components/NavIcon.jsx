@@ -50,6 +50,14 @@ export default function NavIcon({ name, className = 'h-4 w-4' }) {
         <path d="M4 16V6a2 2 0 0 1 2-2h10" />
       </>
     ),
+    share: (
+      <>
+        <circle cx="18" cy="5" r="2.4" />
+        <circle cx="6" cy="12" r="2.4" />
+        <circle cx="18" cy="19" r="2.4" />
+        <path d="M8.2 13.2 15.8 17.4M15.8 6.6 8.2 10.8" />
+      </>
+    ),
     external: <path d="M14 5h5v5M19 5l-9 9M9 5H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3" />,
     menuToggle: <path d="M4 7h16M4 12h16M4 17h16" />,
     close: <path d="M6 6l12 12M18 6 6 18" />,
