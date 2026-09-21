@@ -41,6 +41,47 @@ function itemMatchesFilter(item, filter) {
   return true
 }
 
+function contactPhone(value) {
+  const display = String(value || '').trim()
+  if (!display) return null
+  const tel = display.replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '')
+  const digits = tel.replace(/\D/g, '')
+  if (digits.length < 8) return null
+  return { display, tel, whatsapp: digits }
+}
+
+function RestaurantContact({ restaurant }) {
+  const contact = contactPhone(restaurant?.phone)
+  if (!contact) return null
+  const name = restaurant?.name || 'this restaurant'
+  const message = `Hello ${name}, I have a question regarding your menu.`
+  const actionClass =
+    'inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1.5 text-[12px] font-medium text-ink'
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+      {contact.tel ? (
+        <a href={`tel:${contact.tel}`} className={actionClass} aria-label={`Call ${name}`}>
+          <NavIcon name="phone" className="h-3.5 w-3.5" />
+          Call
+        </a>
+      ) : null}
+      {contact.whatsapp ? (
+        <a
+          href={`https://wa.me/${contact.whatsapp}?text=${encodeURIComponent(message)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={actionClass}
+          aria-label={`WhatsApp ${name}`}
+        >
+          <NavIcon name="whatsapp" className="h-3.5 w-3.5" />
+          WhatsApp
+        </a>
+      ) : null}
+    </div>
+  )
+}
+
 async function copyText(value) {
   try {
     if (navigator.clipboard?.writeText) {
@@ -550,11 +591,8 @@ export default function PublicMenu() {
           <RestaurantMark restaurant={restaurant} />
           <h1 className="mt-3 font-display text-[1.65rem] leading-tight text-ink sm:text-3xl">{restaurant.name}</h1>
           {restaurant.address ? <p className="mt-1.5 max-w-md text-[13px] leading-snug text-muted">{restaurant.address}</p> : null}
-          {restaurant.phone ? (
-            <a href={`tel:${restaurant.phone.replace(/\s+/g, '')}`} className="mt-0.5 text-[13px] text-muted">
-              {restaurant.phone}
-            </a>
-          ) : null}
+          {restaurant.phone ? <p className="mt-0.5 text-[13px] text-muted">{restaurant.phone}</p> : null}
+          <RestaurantContact restaurant={restaurant} />
           <ShareMenu restaurant={restaurant} />
         </div>
       </header>
