@@ -10,6 +10,18 @@ function restaurantInitial(name) {
   return t ? t[0].toUpperCase() : 'R'
 }
 
+function normalizeQuery(value) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function itemMatches(item, category, query) {
+  if (!query) return true
+  const name = String(item.name || '').toLowerCase()
+  const description = String(item.description || '').toLowerCase()
+  const categoryName = String(category.name || '').toLowerCase()
+  return name.includes(query) || description.includes(query) || categoryName.includes(query)
+}
+
 function MenuSkeleton() {
   return (
     <div className="min-h-screen bg-paper" aria-busy="true" aria-live="polite">
@@ -128,6 +140,79 @@ function ItemCard({ item }) {
   )
 }
 
+function MenuSearch({ value, onChange, onClear }) {
+  return (
+    <div className="mx-auto w-full max-w-3xl px-4 pt-2.5">
+      <label htmlFor="menu-search" className="sr-only">
+        Search menu items
+      </label>
+      <div className="relative">
+        <svg
+          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+          viewBox="0 0 16 16"
+          fill="none"
+          aria-hidden="true"
+        >
+          <circle cx="7" cy="7" r="4.25" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M10.2 10.2 13.5 13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+        <input
+          id="menu-search"
+          className="menu-search w-full rounded-full border border-line bg-paper py-2 pl-10 pr-10 text-sm text-ink placeholder:text-muted"
+          type="search"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') onClear()
+          }}
+          placeholder="Search menu items..."
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck="false"
+          enterKeyHint="search"
+        />
+        {value ? (
+          <button
+            type="button"
+            aria-label="Clear search"
+            onClick={onClear}
+            className="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-muted hover:text-ink"
+          >
+            <span aria-hidden="true" className="text-lg leading-none">
+              ×
+            </span>
+          </button>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function CategorySections({ groups, searching }) {
+  return (
+    <div className="space-y-8 sm:space-y-10">
+      {searching ? (
+        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Search results</p>
+      ) : null}
+      {groups.map((category) => (
+        <section key={category.id} id={searching ? undefined : category.id} className={searching ? '' : 'scroll-mt-[7.5rem]'}>
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <h2 className="font-display text-xl tracking-wide text-ink sm:text-[1.35rem]">{category.name}</h2>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-muted">
+              {category.items.length} {category.items.length === 1 ? 'item' : 'items'}
+            </p>
+          </div>
+          <ul className="space-y-2.5">
+            {category.items.map((item) => (
+              <ItemCard key={item.id} item={item} />
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  )
+}
+
 export default function PublicMenu() {
   const { slug } = useParams()
   const navRef = useRef(null)
@@ -137,6 +222,7 @@ export default function PublicMenu() {
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const [activeId, setActiveId] = useState('')
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     let active = true
@@ -162,6 +248,7 @@ export default function PublicMenu() {
       setRestaurant(data)
       setCategories(menu.categories)
       setItems(menu.items)
+      setQuery('')
       setLoading(false)
     }
     load()
@@ -181,6 +268,18 @@ export default function PublicMenu() {
       .filter((category) => category.items.length > 0)
   }, [categories, items])
 
+  const needle = normalizeQuery(query)
+  const searching = needle.length > 0
+  const results = useMemo(() => {
+    if (!searching) return grouped
+    return grouped
+      .map((category) => ({
+        ...category,
+        items: category.items.filter((item) => itemMatches(item, category, needle)),
+      }))
+      .filter((category) => category.items.length > 0)
+  }, [grouped, needle, searching])
+
   useEffect(() => {
     if (!restaurant?.name) return
     const prev = document.title
@@ -199,7 +298,7 @@ export default function PublicMenu() {
   }, [grouped])
 
   useEffect(() => {
-    if (grouped.length === 0) return
+    if (searching || grouped.length === 0) return
     const observer = new IntersectionObserver(
       (entries) => {
         const visible = entries
@@ -214,19 +313,26 @@ export default function PublicMenu() {
       if (el) observer.observe(el)
     })
     return () => observer.disconnect()
-  }, [grouped])
+  }, [grouped, searching])
 
   useEffect(() => {
-    if (!activeId || !navRef.current) return
+    if (searching || !activeId || !navRef.current) return
     const chip = navRef.current.querySelector(`[data-cat="${activeId}"]`)
     if (chip) chip.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
-  }, [activeId])
+  }, [activeId, searching])
 
   function goToCategory(event, id) {
     event.preventDefault()
+    if (searching) setQuery('')
     setActiveId(id)
-    const section = document.getElementById(id)
-    if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    requestAnimationFrame(() => {
+      const section = document.getElementById(id)
+      if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
+
+  function clearSearch() {
+    setQuery('')
   }
 
   if (loading) return <MenuSkeleton />
@@ -258,26 +364,29 @@ export default function PublicMenu() {
       </header>
 
       {grouped.length > 0 ? (
-        <nav className="sticky top-0 z-20 border-b border-line bg-card/95 backdrop-blur" aria-label="Menu categories">
-          <div ref={navRef} className="no-scrollbar mx-auto flex max-w-3xl gap-1.5 overflow-x-auto px-4 py-2.5">
-            {grouped.map((category) => {
-              const on = category.id === activeId
-              return (
-                <a
-                  key={category.id}
-                  href={`#${category.id}`}
-                  data-cat={category.id}
-                  onClick={(event) => goToCategory(event, category.id)}
-                  className={`shrink-0 rounded-full px-3 py-1.5 text-[12px] font-medium tracking-wide transition-colors ${
-                    on ? 'bg-forest text-[#f5ead8]' : 'bg-paper text-muted ring-1 ring-line'
-                  }`}
-                >
-                  {category.name}
-                </a>
-              )
-            })}
-          </div>
-        </nav>
+        <div className="sticky top-0 z-20 border-b border-line bg-card/95 pb-2.5 backdrop-blur">
+          <MenuSearch value={query} onChange={setQuery} onClear={clearSearch} />
+          <nav className="mt-2" aria-label="Menu categories">
+            <div ref={navRef} className="no-scrollbar mx-auto flex max-w-3xl gap-1.5 overflow-x-auto px-4">
+              {grouped.map((category) => {
+                const on = !searching && category.id === activeId
+                return (
+                  <a
+                    key={category.id}
+                    href={`#${category.id}`}
+                    data-cat={category.id}
+                    onClick={(event) => goToCategory(event, category.id)}
+                    className={`shrink-0 rounded-full px-3 py-1.5 text-[12px] font-medium tracking-wide transition-colors ${
+                      on ? 'bg-forest text-[#f5ead8]' : 'bg-paper text-muted ring-1 ring-line'
+                    }`}
+                  >
+                    {category.name}
+                  </a>
+                )
+              })}
+            </div>
+          </nav>
+        </div>
       ) : null}
 
       <main className="mx-auto max-w-3xl px-4 py-6 sm:py-8">
@@ -286,24 +395,13 @@ export default function PublicMenu() {
             <p className="font-display text-xl text-ink">Menu coming soon</p>
             <p className="mt-2 text-sm text-muted">This restaurant has not added dishes yet.</p>
           </div>
-        ) : (
-          <div className="space-y-8 sm:space-y-10">
-            {grouped.map((category) => (
-              <section key={category.id} id={category.id} className="scroll-mt-[3.75rem]">
-                <div className="mb-3 flex items-baseline justify-between gap-3">
-                  <h2 className="font-display text-xl tracking-wide text-ink sm:text-[1.35rem]">{category.name}</h2>
-                  <p className="text-[11px] uppercase tracking-[0.14em] text-muted">
-                    {category.items.length} {category.items.length === 1 ? 'item' : 'items'}
-                  </p>
-                </div>
-                <ul className="space-y-2.5">
-                  {category.items.map((item) => (
-                    <ItemCard key={item.id} item={item} />
-                  ))}
-                </ul>
-              </section>
-            ))}
+        ) : searching && results.length === 0 ? (
+          <div className="rounded-2xl border border-line bg-card px-6 py-14 text-center">
+            <p className="font-display text-xl text-ink">No items found</p>
+            <p className="mt-2 text-sm text-muted">Try searching for another dish.</p>
           </div>
+        ) : (
+          <CategorySections groups={searching ? results : grouped} searching={searching} />
         )}
       </main>
 

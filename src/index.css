@@ -54,3 +54,10 @@ select {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+.menu-search::-webkit-search-decoration,
+.menu-search::-webkit-search-cancel-button,
+.menu-search::-webkit-search-results-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
