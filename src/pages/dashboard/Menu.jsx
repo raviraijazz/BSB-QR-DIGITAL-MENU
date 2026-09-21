@@ -5,10 +5,12 @@ import Button from '../../components/Button'
 import Card from '../../components/Card'
 import EmptyState from '../../components/EmptyState'
 import Field, { inputClass } from '../../components/Field'
+import NavIcon from '../../components/NavIcon'
 import SortableList, { SortHandle } from '../../components/SortableList'
 import Spinner from '../../components/Spinner'
 import FoodTypeMark, { FoodTypeText } from '../../components/FoodTypeMark'
 import { FOOD_TYPES, normalizeFoodType } from '../../lib/foodType'
+import { canBuildMenuPdf, downloadMenuPdf } from '../../lib/menuPdf'
 import { emptyVariant, itemToFormPricing, pricingPayload, summaryPrice, validatePricing } from '../../lib/pricing'
 import { withSortOrder } from '../../lib/sort'
 import { uploadAsset } from '../../lib/upload'
@@ -44,6 +46,8 @@ export default function Menu() {
   const [busy, setBusy] = useState(false)
   const [saving, setSaving] = useState(false)
   const [togglingId, setTogglingId] = useState('')
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const [notice, setNotice] = useState('')
 
   async function load() {
     if (!restaurant) {
@@ -63,6 +67,7 @@ export default function Menu() {
     setCategories([])
     setItems([])
     setError('')
+    setNotice('')
     load()
   }, [restaurant?.id])
 
@@ -217,6 +222,26 @@ export default function Menu() {
     setItems(replaceCategory(item.category_id, ordered))
   }
 
+  async function downloadPdf() {
+    if (pdfBusy || saving || busy) return
+    if (!canBuildMenuPdf(items)) {
+      setError('Add menu items before generating your PDF.')
+      setNotice('')
+      return
+    }
+    setPdfBusy(true)
+    setError('')
+    setNotice('Generating PDF...')
+    try {
+      await downloadMenuPdf({ restaurant, categories, items })
+      setNotice('Menu PDF downloaded')
+    } catch (err) {
+      setNotice('')
+      setError(err?.message || 'Could not generate the PDF.')
+    }
+    setPdfBusy(false)
+  }
+
   async function onReorder(categoryId, next, previous) {
     if (saving) return
     setSaving(true)
@@ -232,12 +257,19 @@ export default function Menu() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <h1 className="font-display text-3xl">Menu items</h1>
-        <p className="mt-1 text-sm text-muted">
-          {restaurant.name}: drag the handle to change the order shown on this restaurant's public menu.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="font-display text-3xl">Menu items</h1>
+          <p className="mt-1 text-sm text-muted">
+            {restaurant.name}: drag the handle to change the order shown on this restaurant's public menu.
+          </p>
+        </div>
+        <Button variant="secondary" onClick={downloadPdf} disabled={pdfBusy || saving || busy}>
+          <NavIcon name="download" className="h-4 w-4" />
+          {pdfBusy ? 'Generating PDF...' : 'Download Menu PDF'}
+        </Button>
       </div>
+      {notice ? <Alert type="success">{notice}</Alert> : null}
       <Card title={editing ? 'Edit item' : 'Add item'}>
         <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
           <Field label="Category">

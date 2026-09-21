@@ -69,6 +69,13 @@ export default function NavIcon({ name, className = 'h-4 w-4' }) {
         <path d="M9.4 9.7c.2-.4.3-.4.6-.4h.5c.2 0 .4 0 .5.4.2.5.6 1.6.6 1.7 0 .10.0.1.4.6s.2.5.4.7.3.3.5.5.3.1.5 0c.2-.1.8-.3 1.5-.9s1-.9 1.1-1.2.1-.5 0-.7-.5-.6-.7-.7" />
       </>
     ),
+    download: (
+      <>
+        <path d="M12 4v10" />
+        <path d="M8 10l4 4 4-4" />
+        <path d="M5 19h14" />
+      </>
+    ),
     external: <path d="M14 5h5v5M19 5l-9 9M9 5H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3" />,
     menuToggle: <path d="M4 7h16M4 12h16M4 17h16" />,
     close: <path d="M6 6l12 12M18 6 6 18" />,
