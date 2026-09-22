@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import FoodTypeMark from '../components/FoodTypeMark'
 import NavIcon from '../components/NavIcon'
 import { normalizeFoodType } from '../lib/foodType'
 import { menuUrl } from '../lib/menuUrl'
 import { menuVariantRows } from '../lib/pricing'
+import { tableHeading } from '../lib/tableToken'
 import { getPublicRestaurant } from '../services/restaurants'
 import { getPublicMenu } from '../services/menuItems'
+import { getPublicTable } from '../services/tables'
 
 const MENU_FILTERS = [
   { id: 'all', label: 'All' },
@@ -442,10 +444,13 @@ function CategorySections({ groups, searching }) {
 
 export default function PublicMenu() {
   const { slug } = useParams()
+  const [searchParams] = useSearchParams()
+  const tableToken = String(searchParams.get('table') || '').trim()
   const navRef = useRef(null)
   const [restaurant, setRestaurant] = useState(null)
   const [categories, setCategories] = useState([])
   const [items, setItems] = useState([])
+  const [table, setTable] = useState(null)
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const [activeId, setActiveId] = useState('')
@@ -457,6 +462,7 @@ export default function PublicMenu() {
     async function load() {
       setLoading(true)
       setFailed(false)
+      setTable(null)
       const { data, error: restError } = await getPublicRestaurant(slug)
       if (!active) return
       if (restError || !data) {
@@ -473,9 +479,16 @@ export default function PublicMenu() {
         setLoading(false)
         return
       }
+      let nextTable = null
+      if (tableToken) {
+        const found = await getPublicTable(data.id, tableToken)
+        if (!active) return
+        nextTable = found.data || null
+      }
       setRestaurant(data)
       setCategories(menu.categories)
       setItems(menu.items)
+      setTable(nextTable)
       setQuery('')
       setFilter('all')
       setLoading(false)
@@ -484,7 +497,7 @@ export default function PublicMenu() {
     return () => {
       active = false
     }
-  }, [slug])
+  }, [slug, tableToken])
 
   const grouped = useMemo(() => {
     return categories
@@ -592,6 +605,11 @@ export default function PublicMenu() {
           <h1 className="mt-3 font-display text-[1.65rem] leading-tight text-ink sm:text-3xl">{restaurant.name}</h1>
           {restaurant.address ? <p className="mt-1.5 max-w-md text-[13px] leading-snug text-muted">{restaurant.address}</p> : null}
           {restaurant.phone ? <p className="mt-0.5 text-[13px] text-muted">{restaurant.phone}</p> : null}
+          {table ? (
+            <p className="mt-2 inline-flex rounded-full bg-forest px-3 py-1 text-[12px] font-medium tracking-wide text-[#f5ead8]">
+              {tableHeading(table)}
+            </p>
+          ) : null}
           <RestaurantContact restaurant={restaurant} />
           <ShareMenu restaurant={restaurant} />
         </div>

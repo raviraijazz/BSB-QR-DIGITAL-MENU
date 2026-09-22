@@ -16,6 +16,7 @@ const Restaurant = lazy(() => import('./pages/dashboard/Restaurant'))
 const Categories = lazy(() => import('./pages/dashboard/Categories'))
 const Menu = lazy(() => import('./pages/dashboard/Menu'))
 const Qr = lazy(() => import('./pages/dashboard/Qr'))
+const Tables = lazy(() => import('./pages/dashboard/Tables'))
 const Settings = lazy(() => import('./pages/dashboard/Settings'))
 
 export default function App() {
@@ -38,6 +39,7 @@ export default function App() {
                 <Route path="restaurant" element={<Restaurant />} />
                 <Route path="categories" element={<Categories />} />
                 <Route path="menu" element={<Menu />} />
+                <Route path="tables" element={<Tables />} />
                 <Route path="qr" element={<Qr />} />
                 <Route path="settings" element={<Settings />} />
               </Route>

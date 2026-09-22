@@ -10,6 +10,7 @@ const links = [
   { to: '/dashboard/restaurant', label: 'Restaurant', icon: 'restaurant' },
   { to: '/dashboard/categories', label: 'Categories', icon: 'categories' },
   { to: '/dashboard/menu', label: 'Menu items', icon: 'menu' },
+  { to: '/dashboard/tables', label: 'Tables', icon: 'tables' },
   { to: '/dashboard/qr', label: 'QR Studio', icon: 'qr' },
   { to: '/dashboard/settings', label: 'Settings', icon: 'settings' },
 ]

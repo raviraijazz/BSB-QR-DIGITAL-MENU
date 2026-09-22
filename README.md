@@ -15,7 +15,7 @@ VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-2. In the Supabase SQL Editor, run `supabase/schema.sql`.
+2. In the Supabase SQL Editor, run `supabase/schema.sql`. Existing projects that already have tables can run `supabase/restaurant-tables-fields.sql` to add table number and active status.
 
 3. Install and start:
 
@@ -28,4 +28,4 @@ npm run dev
 
 Public: `/`, `/login`, `/signup`, `/menu/:slug`
 
-Dashboard: `/dashboard`, `/dashboard/restaurant`, `/dashboard/categories`, `/dashboard/menu`, `/dashboard/qr`, `/dashboard/settings`
+Dashboard: `/dashboard`, `/dashboard/restaurant`, `/dashboard/categories`, `/dashboard/menu`, `/dashboard/tables`, `/dashboard/qr`, `/dashboard/settings`

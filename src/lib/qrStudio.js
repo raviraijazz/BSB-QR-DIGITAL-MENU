@@ -334,7 +334,17 @@ function containDraw(ctx, img, x, y, w, h) {
   ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh)
 }
 
-export function renderPrintCanvas(format, { restaurantName, logoImg, matrix, fg, bg, style, showLogo, logoSize }) {
+function paintTableLabel(ctx, tableName, width, y) {
+  if (!tableName) return 0
+  const size = fitText(ctx, tableName, width - 200, 36, 20, '600', 'Outfit, sans-serif')
+  ctx.fillStyle = '#1f3d32'
+  ctx.font = `600 ${size}px Outfit, sans-serif`
+  ctx.textAlign = 'center'
+  ctx.fillText(tableName, width / 2, y)
+  return 44
+}
+
+export function renderPrintCanvas(format, { restaurantName, tableName, logoImg, matrix, fg, bg, style, showLogo, logoSize }) {
   const sizes = {
     a4: [1240, 1754],
     tent: [900, 1300],
@@ -369,10 +379,12 @@ export function renderPrintCanvas(format, { restaurantName, logoImg, matrix, fg,
     ctx.fillStyle = '#1c1917'
     ctx.font = `650 ${nameSize}px Fraunces, Georgia, serif`
     ctx.textAlign = 'center'
-    ctx.fillText(name, width / 2, logoImg ? 310 : 220)
+    const nameY = logoImg ? 310 : 220
+    ctx.fillText(name, width / 2, nameY)
+    const extra = paintTableLabel(ctx, tableName, width, nameY + 48)
 
-    const qrSize = 780
-    const qrY = logoImg ? 360 : 280
+    const qrSize = extra ? 720 : 780
+    const qrY = (logoImg ? 360 : 280) + extra
     const qrCanvas = createQrCanvas(qrSize, qrOptions)
     ctx.drawImage(qrCanvas, (width - qrSize) / 2, qrY, qrSize, qrSize)
 
@@ -400,10 +412,12 @@ export function renderPrintCanvas(format, { restaurantName, logoImg, matrix, fg,
     ctx.fillStyle = '#1c1917'
     ctx.textAlign = 'center'
     ctx.font = `650 ${nameSize}px Fraunces, Georgia, serif`
-    ctx.fillText(name, width / 2, logoImg ? 250 : 170)
+    const nameY = logoImg ? 250 : 170
+    ctx.fillText(name, width / 2, nameY)
+    const extra = paintTableLabel(ctx, tableName, width, nameY + 40)
 
-    const qrSize = 620
-    const qrY = logoImg ? 290 : 220
+    const qrSize = extra ? 560 : 620
+    const qrY = (logoImg ? 290 : 220) + extra
     const qrCanvas = createQrCanvas(qrSize, qrOptions)
     ctx.drawImage(qrCanvas, (width - qrSize) / 2, qrY)
     ctx.fillStyle = '#1f3d32'
@@ -425,13 +439,15 @@ export function renderPrintCanvas(format, { restaurantName, logoImg, matrix, fg,
     ctx.textAlign = 'center'
     ctx.font = `650 ${nameSize}px Fraunces, Georgia, serif`
     ctx.fillText(name, width / 2, 130)
+    const extra = paintTableLabel(ctx, tableName, width, 168)
 
-    const qrSize = 680
+    const qrSize = extra ? 620 : 680
+    const qrY = 170 + extra
     const qrCanvas = createQrCanvas(qrSize, qrOptions)
-    ctx.drawImage(qrCanvas, (width - qrSize) / 2, 170)
+    ctx.drawImage(qrCanvas, (width - qrSize) / 2, qrY)
     ctx.fillStyle = '#1f3d32'
     ctx.font = '600 30px Outfit, sans-serif'
-    ctx.fillText('Scan to View Menu', width / 2, 170 + qrSize + 60)
+    ctx.fillText('Scan to View Menu', width / 2, qrY + qrSize + 60)
     return canvas
   }
 
@@ -445,6 +461,11 @@ export function renderPrintCanvas(format, { restaurantName, logoImg, matrix, fg,
   ctx.textAlign = 'center'
   ctx.font = `650 ${nameSize}px Fraunces, Georgia, serif`
   ctx.fillText(name, width / 2, qrY + qrSize + 70)
+  if (tableName) {
+    ctx.fillStyle = '#1f3d32'
+    ctx.font = '600 28px Outfit, sans-serif'
+    ctx.fillText(tableName, width / 2, qrY + qrSize + 108)
+  }
   return canvas
 }
 
@@ -484,7 +505,7 @@ export async function downloadPrintPdf(format, canvas, filename) {
   pdf.save(filename)
 }
 
-export async function downloadBrandedPdf({ name, url, qrCanvas, logoImg, filename }) {
+export async function downloadBrandedPdf({ name, tableName, url, qrCanvas, logoImg, filename }) {
   const { jsPDF } = await import('jspdf')
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
   const pageW = pdf.internal.pageSize.getWidth()
@@ -511,6 +532,12 @@ export async function downloadBrandedPdf({ name, url, qrCanvas, logoImg, filenam
   pdf.setFont('helvetica', 'bold')
   pdf.setFontSize(22)
   pdf.text(name || 'Restaurant', pageW / 2, cursorY + 8, { align: 'center', maxWidth: pageW - 40 })
+  if (tableName) {
+    pdf.setTextColor(31, 61, 50)
+    pdf.setFontSize(14)
+    pdf.text(tableName, pageW / 2, cursorY + 16, { align: 'center', maxWidth: pageW - 40 })
+    cursorY += 10
+  }
 
   const qrSize = 118
   const qrY = cursorY + 18
@@ -526,6 +553,52 @@ export async function downloadBrandedPdf({ name, url, qrCanvas, logoImg, filenam
   pdf.text('Open your camera and point it at this code.', pageW / 2, qrY + qrSize + 22, { align: 'center' })
   pdf.setFontSize(9)
   pdf.text(url, pageW / 2, qrY + qrSize + 32, { align: 'center', maxWidth: pageW - 40 })
+
+  pdf.save(filename)
+}
+
+export async function downloadBulkTablePdf({ restaurantName, tables, qrStyle, filename }) {
+  if (!tables?.length) throw new Error('Add tables first, then print their QRs.')
+  const { jsPDF } = await import('jspdf')
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+  const pageW = pdf.internal.pageSize.getWidth()
+  const pageH = pdf.internal.pageSize.getHeight()
+  const cols = 2
+  const rows = 2
+  const perPage = cols * rows
+  const margin = 10
+  const gap = 6
+  const cellW = (pageW - margin * 2 - gap) / cols
+  const cellH = (pageH - margin * 2 - gap) / rows
+
+  tables.forEach((table, index) => {
+    if (index > 0 && index % perPage === 0) pdf.addPage()
+    const slot = index % perPage
+    const col = slot % cols
+    const row = Math.floor(slot / cols)
+    const x = margin + col * (cellW + gap)
+    const y = margin + row * (cellH + gap)
+
+    pdf.setFillColor(255, 253, 249)
+    pdf.roundedRect(x, y, cellW, cellH, 3, 3, 'F')
+    pdf.setDrawColor(231, 223, 212)
+    pdf.roundedRect(x, y, cellW, cellH, 3, 3, 'S')
+
+    const matrix = createQrMatrix(table.url)
+    if (!matrix) return
+    const qrCanvas = createQrCanvas(512, { ...qrStyle, matrix })
+    const qrMm = Math.min(cellW - 16, cellH - 36)
+    pdf.addImage(canvasToDataUrl(qrCanvas), 'PNG', x + (cellW - qrMm) / 2, y + 10, qrMm, qrMm)
+
+    pdf.setTextColor(28, 25, 23)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(11)
+    pdf.text(table.name || 'Table', x + cellW / 2, y + qrMm + 18, { align: 'center', maxWidth: cellW - 8 })
+    pdf.setTextColor(120, 113, 108)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(8)
+    pdf.text(restaurantName || 'Menu', x + cellW / 2, y + qrMm + 24, { align: 'center', maxWidth: cellW - 8 })
+  })
 
   pdf.save(filename)
 }

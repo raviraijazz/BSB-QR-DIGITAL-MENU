@@ -36,6 +36,14 @@ export default function NavIcon({ name, className = 'h-4 w-4' }) {
         <path d="M14 14h1.5v1.5H14zM16.5 16.5H18V18h-1.5zM14 18h1.5v-1.5" />
       </>
     ),
+    tables: (
+      <>
+        <path d="M4 8h16" />
+        <path d="M5 8v11M19 8v11" />
+        <path d="M12 8v11" />
+        <path d="M4 8l8-4 8 4" />
+      </>
+    ),
     settings: (
       <>
         <circle cx="12" cy="12" r="3" />

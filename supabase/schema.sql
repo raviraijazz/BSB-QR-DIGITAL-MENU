@@ -34,14 +34,31 @@ create table if not exists public.menu_items (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.restaurant_tables (
+  id uuid primary key default gen_random_uuid(),
+  restaurant_id uuid not null references public.restaurants (id) on delete cascade,
+  name text not null default '',
+  table_number text not null,
+  qr_token text not null unique,
+  is_active boolean not null default true,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now()
+);
+
 create index if not exists restaurants_slug_idx on public.restaurants (slug);
 create index if not exists restaurants_user_id_idx on public.restaurants (user_id);
 create index if not exists categories_restaurant_idx on public.categories (restaurant_id, sort_order);
 create index if not exists menu_items_restaurant_idx on public.menu_items (restaurant_id, category_id, sort_order);
+create unique index if not exists restaurant_tables_qr_token_idx on public.restaurant_tables (qr_token);
+create unique index if not exists restaurant_tables_restaurant_number_idx
+  on public.restaurant_tables (restaurant_id, lower(table_number))
+  where btrim(table_number) <> '';
+create index if not exists restaurant_tables_restaurant_idx on public.restaurant_tables (restaurant_id, sort_order);
 
 alter table public.restaurants enable row level security;
 alter table public.categories enable row level security;
 alter table public.menu_items enable row level security;
+alter table public.restaurant_tables enable row level security;
 
 drop policy if exists "owners manage restaurants" on public.restaurants;
 create policy "owners manage restaurants"
@@ -104,6 +121,34 @@ create policy "owners manage menu_items"
 drop policy if exists "public read menu_items" on public.menu_items;
 create policy "public read menu_items"
   on public.menu_items for select
+  to anon, authenticated
+  using (
+    exists (
+      select 1 from public.restaurants r
+      where r.id = restaurant_id and r.slug is not null
+    )
+  );
+
+drop policy if exists "owners manage restaurant_tables" on public.restaurant_tables;
+create policy "owners manage restaurant_tables"
+  on public.restaurant_tables for all
+  to authenticated
+  using (
+    exists (
+      select 1 from public.restaurants r
+      where r.id = restaurant_id and r.user_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.restaurants r
+      where r.id = restaurant_id and r.user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "public read restaurant_tables" on public.restaurant_tables;
+create policy "public read restaurant_tables"
+  on public.restaurant_tables for select
   to anon, authenticated
   using (
     exists (

@@ -5,7 +5,8 @@ import Button from '../../components/Button'
 import Card from '../../components/Card'
 import EmptyState from '../../components/EmptyState'
 import Spinner from '../../components/Spinner'
-import { menuUrl } from '../../lib/menuUrl'
+import { menuUrl, tableMenuUrl } from '../../lib/menuUrl'
+import { fileSafeTableName, tableHeading } from '../../lib/tableToken'
 import {
   BG_PRESETS,
   FG_PRESETS,
@@ -17,6 +18,7 @@ import {
   createQrCanvas,
   createQrMatrix,
   downloadBrandedPdf,
+  downloadBulkTablePdf,
   downloadDataUrl,
   downloadPrintPdf,
   downloadSafetyError,
@@ -28,6 +30,7 @@ import {
   toDataUrl,
   whatsappShareUrl,
 } from '../../lib/qrStudio'
+import { isTableActive, listTables } from '../../services/tables'
 
 const PREVIEW_SIZE = 360
 const PNG_SIZE = 1024
@@ -67,8 +70,41 @@ export default function Qr() {
   const [printFormat, setPrintFormat] = useState('a4')
   const [printPreviewUrl, setPrintPreviewUrl] = useState('')
   const [busy, setBusy] = useState('')
+  const [tables, setTables] = useState([])
+  const [targetId, setTargetId] = useState('general')
 
-  const url = restaurant?.slug ? menuUrl(restaurant.slug) : ''
+  useEffect(() => {
+    let active = true
+    async function loadTables() {
+      if (!restaurant?.id) {
+        setTables([])
+        setTargetId('general')
+        return
+      }
+      const { data, error: nextError } = await listTables(restaurant.id)
+      if (!active) return
+      if (nextError) setError(nextError.message)
+      setTables(data || [])
+      setTargetId('general')
+    }
+    loadTables()
+    return () => {
+      active = false
+    }
+  }, [restaurant?.id])
+
+  const activeTables = tables.filter((item) => isTableActive(item))
+  const selectedTable = tables.find((item) => item.id === targetId) || null
+  const url = restaurant?.slug
+    ? selectedTable
+      ? tableMenuUrl(restaurant.slug, selectedTable.qr_token)
+      : menuUrl(restaurant.slug)
+    : ''
+  const fileBase = restaurant?.slug
+    ? selectedTable
+      ? `${restaurant.slug}-${fileSafeTableName(tableHeading(selectedTable))}-qr`
+      : `${restaurant.slug}-menu-qr`
+    : 'menu-qr'
   const logoUrl = restaurant?.logo_url || ''
   const hasLogo = Boolean(logoUrl)
 
@@ -125,17 +161,18 @@ export default function Qr() {
       return
     }
     try {
-      const canvas = renderPrintCanvas(printFormat, {
-        restaurantName: restaurant?.name,
-        logoImg,
-        ...qrOptions,
-      })
+        const canvas = renderPrintCanvas(printFormat, {
+          restaurantName: restaurant?.name,
+          tableName: selectedTable ? tableHeading(selectedTable) : '',
+          logoImg,
+          ...qrOptions,
+        })
       printPreviewRef.current = canvas
       setPrintPreviewUrl(canvasToDataUrl(canvas))
     } catch {
       setPrintPreviewUrl('')
     }
-  }, [matrix, printFormat, restaurant?.name, logoImg, qrOptions])
+  }, [matrix, printFormat, restaurant?.name, selectedTable, logoImg, qrOptions])
 
   if (loading) return <Spinner />
   if (!restaurant) {
@@ -168,7 +205,7 @@ export default function Qr() {
     try {
       const blob = await canvasToBlob(highResCanvas())
       const href = URL.createObjectURL(blob)
-      downloadDataUrl(`${restaurant.slug}-menu-qr.png`, href)
+      downloadDataUrl(`${fileBase}.png`, href)
       setTimeout(() => URL.revokeObjectURL(href), 1500)
     } catch (err) {
       setError(err.message)
@@ -194,7 +231,7 @@ export default function Qr() {
         logoDataUrl,
         logoSize,
       })
-      downloadTextFile(`${restaurant.slug}-menu-qr.svg`, svg, 'image/svg+xml')
+      downloadTextFile(`${fileBase}.svg`, svg, 'image/svg+xml')
     } catch (err) {
       setError(err.message)
     }
@@ -212,10 +249,11 @@ export default function Qr() {
     try {
       await downloadBrandedPdf({
         name: restaurant.name,
+        tableName: selectedTable ? tableHeading(selectedTable) : '',
         url,
         qrCanvas: highResCanvas(),
         logoImg,
-        filename: `${restaurant.slug}-menu-qr.pdf`,
+        filename: `${fileBase}.pdf`,
       })
     } catch (err) {
       setError(err.message)
@@ -238,9 +276,9 @@ export default function Qr() {
     setBusy(`print-${kind}`)
     try {
       if (kind === 'png') {
-        downloadDataUrl(`${restaurant.slug}-${printFormat}.png`, canvasToDataUrl(canvas))
+        downloadDataUrl(`${fileBase}-${printFormat}.png`, canvasToDataUrl(canvas))
       } else {
-        await downloadPrintPdf(printFormat, canvas, `${restaurant.slug}-${printFormat}.pdf`)
+        await downloadPrintPdf(printFormat, canvas, `${fileBase}-${printFormat}.pdf`)
       }
     } catch (err) {
       setError(err.message)
@@ -278,7 +316,7 @@ export default function Qr() {
     }
     try {
       const blob = await canvasToBlob(highResCanvas())
-      const file = new File([blob], `${restaurant.slug}-menu-qr.png`, { type: 'image/png' })
+          const file = new File([blob], `${fileBase}.png`, { type: 'image/png' })
       if (navigator.canShare?.({ files: [file] })) {
         await navigator.share({
           title: restaurant.name,
@@ -291,7 +329,7 @@ export default function Qr() {
         await navigator.share({ title: restaurant.name, text: `View our digital menu:\n${url}`, url })
         return
       }
-      downloadDataUrl(`${restaurant.slug}-menu-qr.png`, canvasToDataUrl(highResCanvas()))
+      downloadDataUrl(`${fileBase}.png`, canvasToDataUrl(highResCanvas()))
       setNotice('Native share is not available. The QR image was downloaded instead.')
     } catch (err) {
       if (err?.name !== 'AbortError') setError(err.message || 'Could not share the QR.')
@@ -302,14 +340,75 @@ export default function Qr() {
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 
+  async function onBulkPrint() {
+    if (!activeTables.length) {
+      setError('Add active tables first, then print their QRs.')
+      return
+    }
+    if (contrastMessage) {
+      setError(contrastMessage)
+      return
+    }
+    setError('')
+    setBusy('bulk')
+    try {
+      await downloadBulkTablePdf({
+        restaurantName: restaurant.name,
+        tables: activeTables.map((item) => ({
+          name: tableHeading(item),
+          url: tableMenuUrl(restaurant.slug, item.qr_token),
+        })),
+        qrStyle: { fg, bg, style, showLogo: logoOn, logoImg, logoSize },
+        filename: `${restaurant.slug}-table-qrs.pdf`,
+      })
+    } catch (err) {
+      setError(err.message)
+    }
+    setBusy('')
+  }
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
         <h1 className="font-display text-3xl">QR Code Studio</h1>
         <p className="mt-1 text-sm text-muted">
-          Brand your QR. The code always opens the same permanent menu URL.
+          Brand your QR. The general restaurant code always opens the same permanent menu URL.
         </p>
       </div>
+
+      <Card title="QR target">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setTargetId('general')}
+            className={`rounded-xl border px-3 py-2 text-sm ${
+              targetId === 'general' ? 'border-forest bg-white text-forest' : 'border-line bg-white text-stone-600'
+            }`}
+          >
+            General restaurant QR
+          </button>
+          {tables.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setTargetId(item.id)}
+              className={`rounded-xl border px-3 py-2 text-sm ${
+                targetId === item.id ? 'border-forest bg-white text-forest' : 'border-line bg-white text-stone-600'
+              }`}
+            >
+              {tableHeading(item)}
+              {isTableActive(item) ? '' : ' (inactive)'}
+            </button>
+          ))}
+        </div>
+        <p className="mt-3 text-xs text-muted">
+          Table QRs still open this restaurant's public menu with a table token. Manage tables from{' '}
+          <Link className="underline" to="/dashboard/tables">
+            Tables
+          </Link>
+          .
+        </p>
+      </Card>
 
       <Alert>{error}</Alert>
       <Alert type="success">{notice}</Alert>
@@ -477,6 +576,7 @@ export default function Qr() {
                 </div>
               )}
               <p className="font-display text-xl leading-tight">{restaurant.name}</p>
+              {selectedTable ? <p className="mt-1 text-sm font-medium text-forest">{tableHeading(selectedTable)}</p> : null}
               <div className="mx-auto my-5 flex justify-center rounded-2xl bg-white p-3 shadow-sm">
                 {matrix ? (
                   <canvas ref={previewRef} width={PREVIEW_SIZE} height={PREVIEW_SIZE} className="h-64 w-64 max-w-full" />
@@ -495,7 +595,9 @@ export default function Qr() {
               </a>
             </div>
             <div className="mt-4 rounded-xl bg-paper px-3 py-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted">Your menu</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">
+                {selectedTable ? tableHeading(selectedTable) : 'Your menu'}
+              </p>
               <p className="mt-1 break-all text-sm">{url}</p>
               <button type="button" className="mt-2 text-sm underline" onClick={copy}>
                 {copied ? 'Copied' : 'Copy link'}
@@ -536,6 +638,29 @@ export default function Qr() {
             Download print PNG
           </Button>
         </div>
+      </Card>
+
+      <Card title="Print all table QRs">
+        {activeTables.length === 0 ? (
+          <p className="text-sm text-muted">
+            Add active tables from{' '}
+            <Link className="underline" to="/dashboard/tables">
+              Tables
+            </Link>
+            , then print a sheet of unique table QRs here.
+          </p>
+        ) : (
+          <>
+            <p className="text-sm text-muted">
+              Downloads one A4 PDF with {activeTables.length} active table {activeTables.length === 1 ? 'QR' : 'QRs'} (2 per row). The general restaurant QR is not included.
+            </p>
+            <div className="mt-4">
+              <Button onClick={onBulkPrint} disabled={Boolean(contrastMessage) || busy === 'bulk'}>
+                {busy === 'bulk' ? 'Preparing...' : 'Download all table QRs'}
+              </Button>
+            </div>
+          </>
+        )}
       </Card>
     </div>
   )
