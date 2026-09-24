@@ -28,12 +28,25 @@ export default function Login() {
       email: authEmailFromUsername(username),
       password,
     })
-    setBusy(false)
     if (nextError) {
+      setBusy(false)
       setError(friendlyAuthError(nextError))
       return
     }
-    navigate(location.state?.from || '/dashboard', { replace: true })
+    const { data: userData } = await supabase.auth.getUser()
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', userData.user?.id || '')
+      .maybeSingle()
+    setBusy(false)
+    if (profile?.role === 'waiter' || userData.user?.user_metadata?.role === 'waiter') {
+      await supabase.auth.signOut()
+      setError('Use waiter login with your waiter ID.')
+      return
+    }
+    const from = location.state?.from
+    navigate(from && String(from).startsWith('/dashboard') ? from : '/dashboard', { replace: true })
   }
 
   return (
@@ -65,6 +78,9 @@ export default function Login() {
       </form>
       <p className="mt-4 text-center text-sm text-muted">
         New here? <Link to="/signup" className="text-ink underline">Create an account</Link>
+      </p>
+      <p className="mt-2 text-center text-sm text-muted">
+        Waiter? <Link to="/waiter/login" className="text-ink underline">Waiter login</Link>
       </p>
     </div>
   )

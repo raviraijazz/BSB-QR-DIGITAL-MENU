@@ -41,8 +41,10 @@ create table if not exists public.restaurant_tables (
   table_number text not null,
   qr_token text not null unique,
   is_active boolean not null default true,
+  capacity integer not null default 4,
   sort_order int not null default 0,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint restaurant_tables_capacity_check check (capacity > 0)
 );
 
 create index if not exists restaurants_slug_idx on public.restaurants (slug);

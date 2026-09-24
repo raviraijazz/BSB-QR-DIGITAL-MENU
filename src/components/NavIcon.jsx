@@ -44,6 +44,53 @@ export default function NavIcon({ name, className = 'h-4 w-4' }) {
         <path d="M4 8l8-4 8 4" />
       </>
     ),
+    tableWise: (
+      <>
+        <rect x="4" y="4" width="7" height="7" rx="1.2" />
+        <rect x="13" y="4" width="7" height="7" rx="1.2" />
+        <rect x="4" y="13" width="7" height="7" rx="1.2" />
+        <rect x="13" y="13" width="7" height="7" rx="1.2" />
+      </>
+    ),
+    orders: (
+      <>
+        <path d="M9 4h6v3H9z" />
+        <rect x="5" y="6" width="14" height="14" rx="2" />
+        <path d="M8 12h8M8 16h5" />
+      </>
+    ),
+    kitchen: (
+      <>
+        <path d="M12 3.5c2 2.2 3.2 4 3.2 6.2A3.2 3.2 0 0 1 12 13a3.2 3.2 0 0 1-3.2-3.3C8.8 7.5 10 5.7 12 3.5z" />
+        <path d="M8 16h8" />
+        <path d="M9.5 16v2.5a2.5 2.5 0 0 0 5 0V16" />
+      </>
+    ),
+    bills: (
+      <>
+        <path d="M7 4h10v16l-2.5-1.4L12 20l-2.5-1.4L7 20z" />
+        <path d="M9.5 9h5M9.5 12.5h5" />
+      </>
+    ),
+    collections: (
+      <>
+        <circle cx="12" cy="12" r="7.5" />
+        <path d="M12 8v8M9.6 10.2c.7-1.2 4.8-1.1 4.8.8 0 2.2-4.8 1.4-4.8 3.4 0 1.8 3.8 2 5 .7" />
+      </>
+    ),
+    waiters: (
+      <>
+        <circle cx="12" cy="8" r="3" />
+        <path d="M5.5 19c1.4-3.4 3.8-5 6.5-5s5.1 1.6 6.5 5" />
+      </>
+    ),
+    history: (
+      <>
+        <circle cx="12" cy="12" r="8" />
+        <path d="M12 8v4.5l3 1.8" />
+      </>
+    ),
+    chevron: <path d="M6 9l6 6 6-6" />,
     settings: (
       <>
         <circle cx="12" cy="12" r="3" />

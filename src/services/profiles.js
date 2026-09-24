@@ -8,10 +8,28 @@ export async function isUsernameAvailable(username) {
   return { available: Boolean(data), error: null }
 }
 
-export async function createProfile(userId, username) {
+export async function createProfile(userId, username, role = 'owner') {
   const { error } = await supabase.from('profiles').insert({
     id: userId,
     username: normalizeUsername(username),
+    role,
   })
   return { error }
+}
+
+export async function getMyProfile() {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, username, role')
+    .eq('id', (await supabase.auth.getUser()).data.user?.id || '')
+    .maybeSingle()
+  return { data, error }
+}
+
+export function roleFromUser(user, profile) {
+  const fromProfile = profile?.role
+  if (fromProfile === 'owner' || fromProfile === 'waiter') return fromProfile
+  const fromMeta = user?.user_metadata?.role
+  if (fromMeta === 'owner' || fromMeta === 'waiter') return fromMeta
+  return 'owner'
 }

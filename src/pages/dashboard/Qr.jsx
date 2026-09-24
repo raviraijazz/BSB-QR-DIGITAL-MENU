@@ -403,8 +403,8 @@ export default function Qr() {
         </div>
         <p className="mt-3 text-xs text-muted">
           Table QRs still open this restaurant's public menu with a table token. Manage tables from{' '}
-          <Link className="underline" to="/dashboard/tables">
-            Tables
+          <Link className="underline" to="/dashboard/table-wise/tables">
+            Floor / Tables
           </Link>
           .
         </p>
@@ -644,8 +644,8 @@ export default function Qr() {
         {activeTables.length === 0 ? (
           <p className="text-sm text-muted">
             Add active tables from{' '}
-            <Link className="underline" to="/dashboard/tables">
-              Tables
+            <Link className="underline" to="/dashboard/table-wise/tables">
+              Floor / Tables
             </Link>
             , then print a sheet of unique table QRs here.
           </p>

@@ -3,9 +3,25 @@
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   username text not null unique,
+  role text not null default 'owner',
   created_at timestamptz not null default now(),
-  constraint profiles_username_format check (username ~ '^[a-z0-9_]{3,24}$')
+  constraint profiles_username_format check (username ~ '^[a-z0-9_]{3,24}$'),
+  constraint profiles_role_check check (role in ('owner', 'waiter'))
 );
+
+alter table public.profiles
+  add column if not exists role text not null default 'owner';
+
+update public.profiles
+set role = 'owner'
+where role is null or role not in ('owner', 'waiter');
+
+alter table public.profiles
+  drop constraint if exists profiles_role_check;
+
+alter table public.profiles
+  add constraint profiles_role_check
+  check (role in ('owner', 'waiter'));
 
 alter table public.profiles enable row level security;
 

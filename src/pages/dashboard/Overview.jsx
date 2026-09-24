@@ -182,8 +182,8 @@ export default function Overview() {
             <Link to="/dashboard/categories">
               <Button variant="secondary" className={`w-full ${compactBtn}`}>Manage Categories</Button>
             </Link>
-            <Link to="/dashboard/tables">
-              <Button variant="secondary" className={`w-full ${compactBtn}`}>Tables</Button>
+            <Link to="/dashboard/table-wise/tables">
+              <Button variant="secondary" className={`w-full ${compactBtn}`}>Floor / Tables</Button>
             </Link>
             <Link to="/dashboard/qr">
               <Button variant="secondary" className={`w-full ${compactBtn}`}>QR Code Studio</Button>

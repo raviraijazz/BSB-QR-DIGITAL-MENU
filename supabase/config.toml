@@ -1,0 +1,2 @@
+[functions.provision-waiter]
+verify_jwt = true

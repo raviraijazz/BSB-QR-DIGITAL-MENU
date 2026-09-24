@@ -72,7 +72,7 @@ export default function Signup() {
     }
 
     if (data.user?.id) {
-      await createProfile(data.user.id, handle)
+      await createProfile(data.user.id, handle, 'owner')
     }
 
     setBusy(false)

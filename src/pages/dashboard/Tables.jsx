@@ -27,8 +27,17 @@ import {
   listTables,
   updateTable,
 } from '../../services/tables'
+import { assignmentsByTableId, listAssignments } from '../../services/waiterAssignments'
+import { listWaiters } from '../../services/waiters'
 
 const emptyForm = { table_number: '', name: '', is_active: true }
+const FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'assigned', label: 'Assigned' },
+  { key: 'unassigned', label: 'Unassigned' },
+  { key: 'qr_active', label: 'QR Active' },
+  { key: 'qr_inactive', label: 'QR Inactive' },
+]
 
 async function copyText(value) {
   try {
@@ -82,6 +91,11 @@ function qrOptions(url) {
   }
 }
 
+function tableCapacity(table) {
+  const value = Number(table?.capacity)
+  return Number.isFinite(value) && value > 0 ? value : null
+}
+
 function TableModal({ open, title, form, onChange, onClose, onSubmit, busy, error, submitLabel }) {
   if (!open) return null
   return (
@@ -108,7 +122,7 @@ function TableModal({ open, title, form, onChange, onClose, onSubmit, busy, erro
             />
           </Field>
           <label className="flex items-center justify-between gap-3 rounded-xl border border-line bg-white px-3 py-2.5">
-            <span className="text-sm font-medium">Active</span>
+            <span className="text-sm font-medium">QR Active</span>
             <button
               type="button"
               role="switch"
@@ -175,9 +189,148 @@ function QrModal({ open, restaurant, table, onClose, onDownload, onPrint, busy }
   )
 }
 
+function SummaryCard({ label, value }) {
+  return (
+    <Card compact className="!p-4">
+      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">{label}</p>
+      <p className="mt-2 font-display text-[1.75rem] leading-none">{value}</p>
+    </Card>
+  )
+}
+
+function TableFloorCard({ table, waiter, active, onOpen }) {
+  const seats = tableCapacity(table)
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(table)}
+      className={`flex min-h-[148px] w-full flex-col rounded-[1.6rem] border bg-card p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow ${
+        active ? 'border-forest/25' : 'border-line'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="font-display text-lg leading-tight">{tableHeading(table)}</p>
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${active ? 'bg-forest/10 text-forest' : 'bg-paper text-muted'}`}>
+          {active ? 'QR Active' : 'QR Inactive'}
+        </span>
+      </div>
+      <p className="mt-2 text-sm text-muted">{seats ? `${seats} seats` : 'Capacity not set'}</p>
+      <div className="mt-auto pt-3">
+        {waiter ? (
+          <p className="text-sm font-medium">
+            {waiter.waiter_id}
+            {waiter.is_active === false ? <span className="ml-1 text-xs font-normal text-muted">Disabled</span> : null}
+          </p>
+        ) : (
+          <p className="text-sm text-muted">Unassigned</p>
+        )}
+        <p className="mt-2 text-[11px] uppercase tracking-[0.12em] text-muted">Operational status</p>
+        <p className="text-xs text-forest">Ready for service</p>
+      </div>
+    </button>
+  )
+}
+
+function TableDetailDrawer({
+  open,
+  table,
+  waiter,
+  restaurant,
+  onClose,
+  onEdit,
+  onQr,
+  onDownload,
+  onPrint,
+  onCopy,
+  onToggle,
+  onRemove,
+  busy,
+}) {
+  if (!open || !table) return null
+  const active = isTableActive(table)
+  const seats = tableCapacity(table)
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end bg-ink/40" role="dialog" aria-modal="true">
+      <button type="button" className="absolute inset-0" aria-label="Close table" onClick={onClose} />
+      <div className="relative z-10 flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-line bg-card p-5 shadow-lg">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Table</p>
+            <h2 className="mt-1 font-display text-2xl">{tableHeading(table)}</h2>
+            <p className="mt-1 text-sm text-muted">{restaurant?.name}</p>
+          </div>
+          <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-xl border border-line">
+            <NavIcon name="close" className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-3 text-sm">
+          <div className="rounded-2xl border border-line bg-white px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.12em] text-muted">Capacity</p>
+            <p className="mt-1 font-medium">{seats ? `${seats} seats` : 'Not set'}</p>
+          </div>
+          <div className="rounded-2xl border border-line bg-white px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.12em] text-muted">Assigned waiter</p>
+            {waiter ? (
+              <>
+                <p className="mt-1 font-medium">{waiter.full_name}</p>
+                <p className="font-mono text-xs text-muted">{waiter.waiter_id}</p>
+                {waiter.is_active === false ? <p className="mt-1 text-xs text-muted">Assigned to {waiter.full_name} · Disabled</p> : null}
+              </>
+            ) : (
+              <p className="mt-1 text-muted">Unassigned</p>
+            )}
+          </div>
+          <div className="rounded-2xl border border-line bg-white px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.12em] text-muted">QR status</p>
+            <p className="mt-1 font-medium">{active ? 'QR Active' : 'QR Inactive'}</p>
+            <p className="mt-1 text-xs text-muted">{table.qr_token ? 'QR token ready' : 'QR token missing'}</p>
+          </div>
+          <div className="rounded-2xl border border-dashed border-line bg-paper/60 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.12em] text-muted">Operational status</p>
+            <p className="mt-1 font-medium text-forest">Ready for service</p>
+            <p className="mt-1 text-xs text-muted">Session, order and bill status will appear here later. Nothing is stored yet.</p>
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-wrap gap-2">
+          <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => onEdit(table)}>
+            Edit Table
+          </Button>
+          <Link to="/dashboard/table-wise/waiters">
+            <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]">
+              Manage Assignment
+            </Button>
+          </Link>
+          <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => onQr(table)}>
+            Open QR
+          </Button>
+          <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => onDownload(table)} disabled={Boolean(busy)}>
+            Download QR
+          </Button>
+          <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => onPrint(table)} disabled={Boolean(busy)}>
+            Print
+          </Button>
+          <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => onCopy(table)}>
+            Copy link
+          </Button>
+          <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => onToggle(table)}>
+            {active ? 'Deactivate QR' : 'Activate QR'}
+          </Button>
+          <Button variant="danger" className="h-9 px-3 py-0 text-[13px]" onClick={() => onRemove(table)}>
+            Delete
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Tables() {
   const { restaurant, loading } = useOutletContext()
   const [items, setItems] = useState([])
+  const [waiters, setWaiters] = useState([])
+  const [assignments, setAssignments] = useState([])
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
@@ -185,31 +338,85 @@ export default function Tables() {
   const [modal, setModal] = useState('')
   const [editing, setEditing] = useState(null)
   const [qrTable, setQrTable] = useState(null)
+  const [selected, setSelected] = useState(null)
   const [formError, setFormError] = useState('')
   const [qrBusy, setQrBusy] = useState('')
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState('all')
 
   async function load() {
     if (!restaurant) {
       setItems([])
+      setWaiters([])
+      setAssignments([])
       return
     }
-    const { data, error: nextError } = await listTables(restaurant.id)
+    const [tablesResult, waitersResult, assignmentsResult] = await Promise.all([
+      listTables(restaurant.id),
+      listWaiters(restaurant.id),
+      listAssignments(restaurant.id),
+    ])
+    const nextError = tablesResult.error || waitersResult.error || assignmentsResult.error
     if (nextError) setError(nextError.message)
-    else {
-      setError('')
-      setItems(data)
-    }
+    else setError('')
+    setItems(tablesResult.data ?? [])
+    setWaiters(waitersResult.data ?? [])
+    setAssignments(assignmentsResult.data ?? [])
   }
 
   useEffect(() => {
     setItems([])
+    setWaiters([])
+    setAssignments([])
     setError('')
     setNotice('')
     setModal('')
     setEditing(null)
     setQrTable(null)
+    setSelected(null)
+    setQuery('')
+    setFilter('all')
     load()
   }, [restaurant?.id])
+
+  const waiterByTable = useMemo(() => {
+    const map = new Map()
+    const owners = assignmentsByTableId(assignments)
+    for (const table of items) {
+      const row = owners.get(table.id)
+      map.set(table.id, row ? waiters.find((item) => item.id === row.waiter_id) || null : null)
+    }
+    return map
+  }, [items, assignments, waiters])
+
+  const selectedLive = selected ? items.find((item) => item.id === selected.id) || selected : null
+
+  const stats = useMemo(() => {
+    const assigned = items.filter((item) => waiterByTable.get(item.id)).length
+    const qrActive = items.filter((item) => isTableActive(item)).length
+    return {
+      total: items.length,
+      assigned,
+      unassigned: items.length - assigned,
+      qrActive,
+    }
+  }, [items, waiterByTable])
+
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    return items.filter((item) => {
+      const waiter = waiterByTable.get(item.id)
+      const assigned = Boolean(waiter)
+      const active = isTableActive(item)
+      if (filter === 'assigned' && !assigned) return false
+      if (filter === 'unassigned' && assigned) return false
+      if (filter === 'qr_active' && !active) return false
+      if (filter === 'qr_inactive' && active) return false
+      if (!needle) return true
+      const hay = `${item.table_number || ''} ${item.name || ''} ${tableHeading(item)}`.toLowerCase()
+      return hay.includes(needle)
+    })
+  }, [items, waiterByTable, filter, query])
 
   function setFormField(key, value) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -280,7 +487,7 @@ export default function Tables() {
       setItems((current) => current.map((row) => (row.id === item.id ? { ...row, is_active: item.is_active } : row)))
       return
     }
-    setNotice(`${tableHeading(item)} ${next ? 'activated' : 'deactivated'}.`)
+    setNotice(`${tableHeading(item)} ${next ? 'QR activated' : 'QR deactivated'}.`)
   }
 
   async function remove(item) {
@@ -289,6 +496,7 @@ export default function Tables() {
     if (nextError) setError(nextError.message)
     else {
       setNotice(`${tableHeading(item)} deleted.`)
+      setSelected(null)
       load()
     }
   }
@@ -363,20 +571,32 @@ export default function Tables() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="font-display text-3xl">Tables</h1>
-          <p className="mt-1 text-sm text-muted">Create and manage table-wise QR codes for your restaurant.</p>
+          <h1 className="font-display text-3xl">Floor / Tables</h1>
+          <p className="mt-1 text-sm text-muted">Manage restaurant tables and view their operational layout.</p>
         </div>
-        <Button onClick={openAdd}>
-          <NavIcon name="plus" className="h-4 w-4" />
-          Add Table
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Link to="/dashboard/table-wise/waiters">
+            <Button variant="secondary">Manage Assignments</Button>
+          </Link>
+          <Button onClick={openAdd}>
+            <NavIcon name="plus" className="h-4 w-4" />
+            Add Table
+          </Button>
+        </div>
       </div>
 
       <Alert>{error}</Alert>
       <Alert type="success">{notice}</Alert>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard label="Total Tables" value={stats.total} />
+        <SummaryCard label="Assigned Tables" value={stats.assigned} />
+        <SummaryCard label="Unassigned Tables" value={stats.unassigned} />
+        <SummaryCard label="QR Active" value={stats.qrActive} />
+      </div>
 
       {items.length === 0 ? (
         <EmptyState
@@ -386,59 +606,50 @@ export default function Tables() {
           onAction={openAdd}
         />
       ) : (
-        <div className="space-y-3">
-          {items.map((item) => {
-            const active = isTableActive(item)
-            return (
-              <Card key={item.id} compact className="!p-4">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="min-w-0">
-                    <p className="font-medium">{tableHeading(item)}</p>
-                    <p className="mt-0.5 text-sm text-muted">
-                      Table {item.table_number || item.name}
-                      {item.name && item.name !== item.table_number ? ` · ${item.name}` : ''}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
-                          active ? 'bg-forest/10 text-forest' : 'bg-paper text-muted'
-                        }`}
-                      >
-                        {active ? 'Active' : 'Inactive'}
-                      </span>
-                      <span className="rounded-full bg-paper px-2.5 py-0.5 text-[11px] font-medium text-muted">
-                        {item.qr_token ? 'QR ready' : 'QR missing'}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => setQrTable(item)}>
-                      View QR
-                    </Button>
-                    <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => downloadQr(item)}>
-                      Download QR
-                    </Button>
-                    <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => printQr(item)}>
-                      Print
-                    </Button>
-                    <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => copyLink(item)}>
-                      Copy link
-                    </Button>
-                    <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => openEdit(item)}>
-                      Edit
-                    </Button>
-                    <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => toggleActive(item)}>
-                      {active ? 'Deactivate' : 'Activate'}
-                    </Button>
-                    <Button variant="danger" className="h-9 px-3 py-0 text-[13px]" onClick={() => remove(item)}>
-                      Delete
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            )
-          })}
-        </div>
+        <>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap gap-1.5">
+              {FILTERS.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setFilter(item.key)}
+                  className={`rounded-full px-3 py-1.5 text-sm ${
+                    filter === item.key ? 'bg-forest text-white' : 'border border-line bg-white text-stone-600 hover:text-ink'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <input
+              className={`${inputClass} lg:max-w-xs`}
+              placeholder="Search tables..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+
+          {visible.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-line bg-white/70 px-4 py-10 text-center text-sm text-muted">
+              No tables match this search or filter.
+            </p>
+          ) : (
+            <div className="rounded-[1.8rem] border border-line bg-paper/70 p-3 sm:p-4">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+                {visible.map((item) => (
+                  <TableFloorCard
+                    key={item.id}
+                    table={item}
+                    waiter={waiterByTable.get(item.id)}
+                    active={isTableActive(item)}
+                    onOpen={setSelected}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {items.length > 0 ? (
@@ -469,6 +680,24 @@ export default function Tables() {
         onClose={() => setQrTable(null)}
         onDownload={() => downloadQr(qrTable)}
         onPrint={() => printQr(qrTable)}
+        busy={qrBusy}
+      />
+      <TableDetailDrawer
+        open={Boolean(selectedLive)}
+        table={selectedLive}
+        waiter={selectedLive ? waiterByTable.get(selectedLive.id) : null}
+        restaurant={restaurant}
+        onClose={() => setSelected(null)}
+        onEdit={(item) => {
+          setSelected(null)
+          openEdit(item)
+        }}
+        onQr={(item) => setQrTable(item)}
+        onDownload={downloadQr}
+        onPrint={printQr}
+        onCopy={copyLink}
+        onToggle={toggleActive}
+        onRemove={remove}
         busy={qrBusy}
       />
     </div>

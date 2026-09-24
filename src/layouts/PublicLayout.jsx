@@ -2,6 +2,12 @@ import { useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 
+function accountPath(isOwner, isWaiter) {
+  if (isWaiter) return '/waiter'
+  if (isOwner) return '/dashboard'
+  return '/login'
+}
+
 const nav = [
   { href: '/#features', label: 'Features' },
   { href: '/#how-it-works', label: 'How It Works' },
@@ -10,7 +16,8 @@ const nav = [
 ]
 
 export default function PublicLayout() {
-  const { user } = useAuth()
+  const { user, isOwner, isWaiter } = useAuth()
+  const appPath = accountPath(isOwner, isWaiter)
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
   const isHome = pathname === '/'
@@ -41,10 +48,10 @@ export default function PublicLayout() {
           <div className="hidden items-center gap-2 lg:flex">
             {user ? (
               <Link
-                to="/dashboard"
+                to={appPath}
                 className="rounded-full bg-forest px-4 py-2 text-sm text-white transition hover:bg-forest-deep"
               >
-                Dashboard
+                {isWaiter ? 'Waiter' : 'Dashboard'}
               </Link>
             ) : (
               <>
@@ -81,8 +88,8 @@ export default function PublicLayout() {
                 </a>
               ))}
               {user ? (
-                <Link to="/dashboard" onClick={close} className="pt-2 font-medium text-forest">
-                  Dashboard
+                <Link to={appPath} onClick={close} className="pt-2 font-medium text-forest">
+                  {isWaiter ? 'Waiter' : 'Dashboard'}
                 </Link>
               ) : (
                 <>
