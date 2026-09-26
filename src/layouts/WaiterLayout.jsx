@@ -50,9 +50,12 @@ export default function WaiterLayout() {
           <div className="min-w-0">
             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">BSB Digital Menu</p>
             <p className="truncate font-display text-lg leading-tight">{restaurant?.name || 'Restaurant'}</p>
+            <p className="mt-0.5 truncate text-sm text-muted">
+              {waiter.full_name} · <span className="font-mono">{waiter.waiter_id}</span>
+            </p>
           </div>
           <button type="button" onClick={handleSignOut} className="shrink-0 text-sm text-muted hover:text-ink">
-            Sign out
+            Logout
           </button>
         </div>
       </header>

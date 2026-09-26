@@ -36,8 +36,20 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+  let publishableKeys: Record<string, unknown> = {}
+  let secretKeys: Record<string, unknown> = {}
+  try {
+    publishableKeys = JSON.parse(Deno.env.get('SUPABASE_PUBLISHABLE_KEYS') || '{}')
+  } catch {
+    publishableKeys = {}
+  }
+  try {
+    secretKeys = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}')
+  } catch {
+    secretKeys = {}
+  }
+  const anonKey = typeof publishableKeys.default === 'string' ? publishableKeys.default : ''
+  const serviceKey = typeof secretKeys.default === 'string' ? secretKeys.default : ''
   if (!supabaseUrl || !anonKey || !serviceKey) return json({ error: 'Server is not configured' }, 500)
 
   const authHeader = req.headers.get('Authorization') || ''

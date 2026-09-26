@@ -25,6 +25,10 @@ const Waiters = lazy(() => import('./pages/dashboard/tableWise/Waiters'))
 const Settings = lazy(() => import('./pages/dashboard/Settings'))
 const WaiterLogin = lazy(() => import('./pages/waiter/WaiterLogin'))
 const WaiterHome = lazy(() => import('./pages/waiter/WaiterHome'))
+const WaiterSession = lazy(() => import('./pages/waiter/WaiterSession'))
+const WaiterOrder = lazy(() => import('./pages/waiter/WaiterOrder'))
+const LiveOrders = lazy(() => import('./pages/dashboard/tableWise/LiveOrders'))
+const Kitchen = lazy(() => import('./pages/dashboard/tableWise/Kitchen'))
 
 export default function App() {
   return (
@@ -52,8 +56,8 @@ export default function App() {
                 <Route path="tables" element={<Navigate to="/dashboard/table-wise/tables" replace />} />
                 <Route path="table-wise" element={<TableWiseHome />} />
                 <Route path="table-wise/tables" element={<Tables />} />
-                <Route path="table-wise/orders" element={<TableWiseModule />} />
-                <Route path="table-wise/kitchen" element={<TableWiseModule />} />
+                <Route path="table-wise/orders" element={<LiveOrders />} />
+                <Route path="table-wise/kitchen" element={<Kitchen />} />
                 <Route path="table-wise/bills" element={<TableWiseModule />} />
                 <Route path="table-wise/collections" element={<TableWiseModule />} />
                 <Route path="table-wise/waiters" element={<Waiters />} />
@@ -72,6 +76,8 @@ export default function App() {
                 }
               >
                 <Route index element={<WaiterHome />} />
+                <Route path="sessions/:sessionId" element={<WaiterSession />} />
+                <Route path="sessions/:sessionId/order" element={<WaiterOrder />} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

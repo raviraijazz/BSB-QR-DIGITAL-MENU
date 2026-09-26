@@ -15,9 +15,7 @@ export const TABLE_WISE_MODULES = [
     label: 'Live Orders',
     icon: 'orders',
     lines: ['Monitor active orders', 'Track order status'],
-    ready: false,
-    title: 'Live Orders',
-    body: 'Live restaurant orders will appear here once waiter ordering is enabled.',
+    ready: true,
   },
   {
     key: 'kitchen',
@@ -25,9 +23,7 @@ export const TABLE_WISE_MODULES = [
     label: 'Kitchen / KOT',
     icon: 'kitchen',
     lines: ['Monitor kitchen tickets', 'Track preparation status'],
-    ready: false,
-    title: 'Kitchen / KOT',
-    body: 'Kitchen tickets will appear here once order-to-KOT workflow is enabled.',
+    ready: true,
   },
   {
     key: 'bills',
