@@ -22,6 +22,23 @@ export function assignedTableCount(waiter) {
   return 0
 }
 
+export function waiterHasLogin(waiter) {
+  return Boolean(waiter?.auth_user_id)
+}
+
+export function waiterLoginStatus(waiter) {
+  if (!waiterHasLogin(waiter)) return 'none'
+  if (waiter.is_active === false) return 'disabled'
+  return 'enabled'
+}
+
+export function waiterLoginLabel(waiter) {
+  const status = waiterLoginStatus(waiter)
+  if (status === 'enabled') return 'Login Enabled'
+  if (status === 'disabled') return 'Login Disabled'
+  return 'No Login'
+}
+
 export function hasDuplicateWaiterId(waiters, waiterId, excludeId) {
   const key = waiterIdKey(waiterId)
   if (!key) return false

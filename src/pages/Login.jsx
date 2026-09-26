@@ -5,6 +5,7 @@ import Button from '../components/Button'
 import Field, { inputClass } from '../components/Field'
 import { authEmailFromUsername, friendlyAuthError, validateLogin } from '../lib/auth'
 import { supabase } from '../lib/supabase'
+import { roleFromUser } from '../services/profiles'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -40,7 +41,7 @@ export default function Login() {
       .eq('id', userData.user?.id || '')
       .maybeSingle()
     setBusy(false)
-    if (profile?.role === 'waiter' || userData.user?.user_metadata?.role === 'waiter') {
+    if (roleFromUser(userData.user, profile) === 'waiter') {
       await supabase.auth.signOut()
       setError('Use waiter login with your waiter ID.')
       return

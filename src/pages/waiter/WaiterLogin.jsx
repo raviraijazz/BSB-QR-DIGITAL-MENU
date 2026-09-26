@@ -27,12 +27,19 @@ export default function WaiterLogin() {
     setBusy(false)
     if (nextError) {
       const msg = String(nextError.message || '')
-      if (msg.includes('disabled')) setError(msg)
-      else if (msg.toLowerCase().includes('invalid')) setError('Invalid waiter ID or password')
-      else setError(friendlyAuthError(nextError))
+      const known =
+        msg.includes('disabled') ||
+        msg.includes('Invalid waiter ID') ||
+        msg.includes('Waiter account not found') ||
+        msg.includes('not a waiter') ||
+        msg.includes('owner login') ||
+        msg.includes('not confirmed') ||
+        msg.includes('restaurant is not assigned')
+      setError(known ? msg : friendlyAuthError(nextError))
       return
     }
-    navigate(location.state?.from && String(location.state.from).startsWith('/waiter') ? location.state.from : '/waiter', {
+    const from = location.state?.from
+    navigate(from && String(from).startsWith('/waiter') ? from : '/waiter', {
       replace: true,
     })
   }

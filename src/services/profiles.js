@@ -27,9 +27,11 @@ export async function getMyProfile() {
 }
 
 export function roleFromUser(user, profile) {
+  const email = String(user?.email || '')
+  const fromMeta = user?.user_metadata?.role
+  if (fromMeta === 'waiter' || email.endsWith('@waiter.bsbdigitalmenu.local')) return 'waiter'
   const fromProfile = profile?.role
   if (fromProfile === 'owner' || fromProfile === 'waiter') return fromProfile
-  const fromMeta = user?.user_metadata?.role
-  if (fromMeta === 'owner' || fromMeta === 'waiter') return fromMeta
+  if (fromMeta === 'owner') return fromMeta
   return 'owner'
 }

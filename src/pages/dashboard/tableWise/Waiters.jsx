@@ -25,6 +25,9 @@ import {
   updateWaiter,
   validateWaiterFields,
   validateWaiterPasswords,
+  waiterHasLogin,
+  waiterLoginLabel,
+  waiterLoginStatus,
 } from '../../../services/waiters'
 
 const emptyForm = {
@@ -52,6 +55,21 @@ function StatusBadge({ active }) {
       }`}
     >
       {active ? 'Active' : 'Disabled'}
+    </span>
+  )
+}
+
+function LoginBadge({ waiter }) {
+  const status = waiterLoginStatus(waiter)
+  const className =
+    status === 'enabled'
+      ? 'bg-forest/10 text-forest'
+      : status === 'disabled'
+        ? 'bg-paper text-muted'
+        : 'bg-gold/15 text-ink'
+  return (
+    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-medium ${className}`}>
+      {waiterLoginLabel(waiter)}
     </span>
   )
 }
@@ -247,43 +265,50 @@ function AssignTablesModal({
 
 function EnableLoginModal({ open, waiter, form, onChange, onClose, onSubmit, busy, error }) {
   if (!open || !waiter) return null
+  const reactivate = waiterHasLogin(waiter)
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-ink/40 p-4 sm:items-center" role="dialog" aria-modal="true">
       <button type="button" className="absolute inset-0" aria-label="Close" onClick={onClose} />
       <form onSubmit={onSubmit} className="relative z-10 w-full max-w-md rounded-2xl border border-line bg-card p-5 shadow-lg">
-        <h2 className="font-display text-xl">Enable login</h2>
+        <h2 className="font-display text-xl">Enable Login</h2>
         <p className="mt-1 text-sm text-muted">
-          Create a sign-in for {waiter.full_name} ({waiter.waiter_id}). They will use Waiter ID and this password at /waiter/login.
+          {reactivate
+            ? `Reactivate login for ${waiter.full_name} (${waiter.waiter_id}). History stays. They can sign in again at /waiter/login with the existing password.`
+            : `Create a sign-in for ${waiter.full_name} (${waiter.waiter_id}). They will use Waiter ID and this password at /waiter/login.`}
         </p>
         <div className="mt-4 space-y-3">
           <Alert>{error}</Alert>
-          <Field label="Password">
-            <input
-              className={inputClass}
-              type="password"
-              placeholder="At least 6 characters"
-              value={form.password}
-              onChange={(e) => onChange('password', e.target.value)}
-              autoComplete="new-password"
-            />
-          </Field>
-          <Field label="Confirm Password">
-            <input
-              className={inputClass}
-              type="password"
-              placeholder="Repeat password"
-              value={form.confirm_password}
-              onChange={(e) => onChange('confirm_password', e.target.value)}
-              autoComplete="new-password"
-            />
-          </Field>
+          {reactivate ? null : (
+            <>
+              <Field label="Password">
+                <input
+                  className={inputClass}
+                  type="password"
+                  placeholder="At least 6 characters"
+                  value={form.password}
+                  onChange={(e) => onChange('password', e.target.value)}
+                  autoComplete="new-password"
+                />
+              </Field>
+              <Field label="Confirm Password">
+                <input
+                  className={inputClass}
+                  type="password"
+                  placeholder="Repeat password"
+                  value={form.confirm_password}
+                  onChange={(e) => onChange('confirm_password', e.target.value)}
+                  autoComplete="new-password"
+                />
+              </Field>
+            </>
+          )}
         </div>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
           <Button type="submit" disabled={busy}>
-            {busy ? 'Saving...' : 'Enable login'}
+            {busy ? 'Saving...' : 'Enable Login'}
           </Button>
         </div>
       </form>
@@ -299,7 +324,7 @@ function ConfirmDisable({ waiter, busy, onClose, onConfirm }) {
       <div className="relative z-10 w-full max-w-md rounded-2xl border border-line bg-card p-5 shadow-lg">
         <h2 className="font-display text-xl">Disable waiter</h2>
         <p className="mt-2 text-sm text-muted">
-           Disable {waiter.full_name} ({waiter.waiter_id})? The record stays for history. They will not be able to sign in.
+          Disable {waiter.full_name} ({waiter.waiter_id})? The record stays for history. Login is also disabled until you enable it again.
         </p>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
@@ -307,6 +332,29 @@ function ConfirmDisable({ waiter, busy, onClose, onConfirm }) {
           </Button>
           <Button variant="danger" onClick={onConfirm} disabled={busy}>
             {busy ? 'Saving...' : 'Disable Waiter'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ConfirmDisableLogin({ waiter, busy, onClose, onConfirm }) {
+  if (!waiter) return null
+  return (
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-ink/40 p-4 sm:items-center" role="dialog" aria-modal="true">
+      <button type="button" className="absolute inset-0" aria-label="Close" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md rounded-2xl border border-line bg-card p-5 shadow-lg">
+        <h2 className="font-display text-xl">Disable Login</h2>
+        <p className="mt-2 text-sm text-muted">
+          Disable login for {waiter.full_name} ({waiter.waiter_id})? Waiter history stays. They cannot sign in until you enable login again. No Auth user is deleted.
+        </p>
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={onConfirm} disabled={busy}>
+            {busy ? 'Saving...' : 'Disable Login'}
           </Button>
         </div>
       </div>
@@ -328,6 +376,7 @@ export default function Waiters() {
   const [editing, setEditing] = useState(null)
   const [formError, setFormError] = useState('')
   const [pendingDisable, setPendingDisable] = useState(null)
+  const [pendingDisableLogin, setPendingDisableLogin] = useState(null)
   const [assigning, setAssigning] = useState(null)
   const [selectedTableIds, setSelectedTableIds] = useState([])
   const [assignError, setAssignError] = useState('')
@@ -364,6 +413,7 @@ export default function Waiters() {
     setModal('')
     setEditing(null)
     setPendingDisable(null)
+    setPendingDisableLogin(null)
     setAssigning(null)
     setEnablingLogin(null)
     setSelectedTableIds([])
@@ -518,6 +568,21 @@ export default function Waiters() {
   async function onEnableLogin(event) {
     event.preventDefault()
     if (!enablingLogin) return
+    if (waiterHasLogin(enablingLogin)) {
+      setBusy(true)
+      setFormError('')
+      const { error: nextError } = await setWaiterActive(enablingLogin.id, restaurant.id, true)
+      setBusy(false)
+      if (nextError) {
+        setFormError(nextError.message)
+        return
+      }
+      setNotice(`Login enabled for ${enablingLogin.full_name}.`)
+      setEnablingLogin(null)
+      setForm(emptyForm)
+      load()
+      return
+    }
     const passwordError = validateWaiterPasswords({
       password: form.password,
       confirmPassword: form.confirm_password,
@@ -542,6 +607,19 @@ export default function Waiters() {
     setEnablingLogin(null)
     setForm(emptyForm)
     load()
+  }
+
+  async function confirmDisableLogin() {
+    if (!pendingDisableLogin) return
+    setBusy(true)
+    const { error: nextError } = await setWaiterActive(pendingDisableLogin.id, restaurant.id, false)
+    setBusy(false)
+    if (nextError) setError(nextError.message)
+    else {
+      setNotice(`Login disabled for ${pendingDisableLogin.full_name}. History kept.`)
+      setPendingDisableLogin(null)
+      load()
+    }
   }
 
   function toggleTable(tableId) {
@@ -625,12 +703,16 @@ export default function Waiters() {
                 {items.map((item) => {
                   const active = item.is_active !== false
                   const assigned = tableCountByWaiter.get(item.id) || 0
+                  const loginStatus = waiterLoginStatus(item)
                   return (
                     <tr key={item.id} className="border-t border-line">
                       <td className="px-4 py-3 font-medium">{item.full_name}</td>
                       <td className="px-4 py-3 font-mono text-[13px]">{item.waiter_id}</td>
                       <td className="px-4 py-3">
-                        <StatusBadge active={active} />
+                        <div className="flex flex-wrap gap-1.5">
+                          <StatusBadge active={active} />
+                          <LoginBadge waiter={item} />
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-muted">
                         {assigned} {assigned === 1 ? 'table' : 'tables'}
@@ -641,11 +723,15 @@ export default function Waiters() {
                           <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => openAssign(item)}>
                             Manage Tables
                           </Button>
-                          {!item.auth_user_id ? (
-                            <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => openEnableLogin(item)}>
-                              Enable login
+                          {loginStatus === 'enabled' ? (
+                            <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => setPendingDisableLogin(item)}>
+                              Disable Login
                             </Button>
-                          ) : null}
+                          ) : (
+                            <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => openEnableLogin(item)}>
+                              Enable Login
+                            </Button>
+                          )}
                           <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => openEdit(item)}>
                             Edit
                           </Button>
@@ -671,6 +757,7 @@ export default function Waiters() {
             {items.map((item) => {
               const active = item.is_active !== false
               const assigned = tableCountByWaiter.get(item.id) || 0
+              const loginStatus = waiterLoginStatus(item)
               return (
                 <Card key={item.id} compact className="!p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -678,7 +765,10 @@ export default function Waiters() {
                       <p className="font-medium">{item.full_name}</p>
                       <p className="mt-0.5 font-mono text-sm text-muted">{item.waiter_id}</p>
                     </div>
-                    <StatusBadge active={active} />
+                    <div className="flex flex-col items-end gap-1">
+                      <StatusBadge active={active} />
+                      <LoginBadge waiter={item} />
+                    </div>
                   </div>
                   <p className="mt-3 text-sm text-muted">
                     Assigned Tables: {assigned} {assigned === 1 ? 'table' : 'tables'}
@@ -688,11 +778,15 @@ export default function Waiters() {
                     <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => openAssign(item)}>
                       Manage Tables
                     </Button>
-                    {!item.auth_user_id ? (
-                      <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => openEnableLogin(item)}>
-                        Enable login
+                    {loginStatus === 'enabled' ? (
+                      <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => setPendingDisableLogin(item)}>
+                        Disable Login
                       </Button>
-                    ) : null}
+                    ) : (
+                      <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => openEnableLogin(item)}>
+                        Enable Login
+                      </Button>
+                    )}
                     <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => openEdit(item)}>
                       Edit
                     </Button>
@@ -753,6 +847,12 @@ export default function Waiters() {
         busy={busy}
         onClose={() => (busy ? null : setPendingDisable(null))}
         onConfirm={confirmDisable}
+      />
+      <ConfirmDisableLogin
+        waiter={pendingDisableLogin}
+        busy={busy}
+        onClose={() => (busy ? null : setPendingDisableLogin(null))}
+        onConfirm={confirmDisableLogin}
       />
     </div>
   )

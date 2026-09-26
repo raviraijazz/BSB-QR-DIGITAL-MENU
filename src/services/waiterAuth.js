@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { waiterAuthEmailFromWaiterId } from '../lib/auth'
+import { roleFromUser } from './profiles'
 
 const WAITER_SELECT = 'id, restaurant_id, waiter_id, full_name, is_active, auth_user_id, created_at'
 const DISABLED_MESSAGE = 'Your waiter account is currently disabled. Please contact the restaurant owner.'
@@ -50,20 +51,55 @@ export async function listMyAssignedTables(restaurantId, waiterUuid) {
   return { data: data ?? [], error }
 }
 
+function mapWaiterAuthError(error) {
+  const msg = String(error?.message || '').toLowerCase()
+  if (msg.includes('email not confirmed')) {
+    return { message: 'Account is not confirmed. Ask the restaurant owner to recreate the waiter login.' }
+  }
+  if (msg.includes('invalid login') || msg.includes('invalid credentials') || msg.includes('invalid_grant')) {
+    return { message: 'Invalid waiter ID or password' }
+  }
+  return error
+}
+
 export async function signInWaiter(waiterId, password) {
-  const { error } = await supabase.auth.signInWithPassword({
-    email: waiterAuthEmailFromWaiterId(waiterId),
+  const trimmedId = String(waiterId || '').trim()
+  const email = waiterAuthEmailFromWaiterId(trimmedId)
+  const { data: authData, error } = await supabase.auth.signInWithPassword({
+    email,
     password,
   })
-  if (error) return { waiter: null, error }
-  const { data: waiter, error: waiterError } = await getMyWaiter()
+  if (error) return { waiter: null, error: mapWaiterAuthError(error) }
+
+  let user = authData.user
+  if (!user?.id) {
+    const { data: userData } = await supabase.auth.getUser()
+    user = userData.user
+  }
+  const userId = user?.id
+  if (!userId) {
+    await supabase.auth.signOut()
+    return { waiter: null, error: { message: 'Invalid waiter ID or password' } }
+  }
+
+  const [{ data: profile }, { data: waiter, error: waiterError }] = await Promise.all([
+    supabase.from('profiles').select('id, role').eq('id', userId).maybeSingle(),
+    supabase.from('waiters').select(WAITER_SELECT).eq('auth_user_id', userId).maybeSingle(),
+  ])
+
   if (waiterError) {
     await supabase.auth.signOut()
     return { waiter: null, error: waiterError }
   }
   if (!waiter) {
     await supabase.auth.signOut()
-    return { waiter: null, error: { message: 'Invalid waiter ID or password' } }
+    const role = roleFromUser(user, profile)
+    if (role === 'owner') return { waiter: null, error: { message: 'Use owner login instead.' } }
+    return { waiter: null, error: { message: 'Waiter account not found. Ask the restaurant owner to enable login.' } }
+  }
+  if (!waiter.restaurant_id) {
+    await supabase.auth.signOut()
+    return { waiter: null, error: { message: 'Waiter restaurant is not assigned.' } }
   }
   if (waiter.is_active === false) {
     await supabase.auth.signOut()
@@ -96,7 +132,7 @@ export async function provisionWaiter(payload) {
       return {
         data: null,
         error: {
-          message: 'Waiter login setup is not deployed yet. Deploy supabase/functions/provision-waiter and set SUPABASE_SERVICE_ROLE_KEY on the function.',
+          message: 'Waiter login setup is not deployed yet. Redeploy supabase/functions/provision-waiter.',
         },
       }
     }
