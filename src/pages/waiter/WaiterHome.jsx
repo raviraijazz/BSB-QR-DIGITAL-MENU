@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useOutletContext } from 'react-router-dom'
+import { Link, useNavigate, useOutletContext } from 'react-router-dom'
 import Alert from '../../components/Alert'
 import Button from '../../components/Button'
 import EmptyState from '../../components/EmptyState'
@@ -35,10 +35,12 @@ export default function WaiterHome() {
 
   const cards = useMemo(
     () =>
-      (tables || []).map((table) => ({
-        table,
-        session: sessionForTable(sessions, table.id),
-      })),
+      (tables || [])
+        .filter((table) => table.is_active !== false)
+        .map((table) => ({
+          table,
+          session: sessionForTable(sessions, table.id),
+        })),
     [tables, sessions],
   )
 
@@ -60,10 +62,15 @@ export default function WaiterHome() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Waiter</p>
-        <h1 className="mt-1 font-display text-3xl">My Tables</h1>
-        <p className="mt-1 text-sm text-muted">Only tables assigned to {waiter?.waiter_id}.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Waiter</p>
+          <h1 className="mt-1 font-display text-3xl">My Tables</h1>
+          <p className="mt-1 text-sm text-muted">Only tables assigned to {waiter?.waiter_id}.</p>
+        </div>
+        <Link to="/waiter/account" className="text-sm text-muted hover:text-ink">
+          Account / Change Password
+        </Link>
       </div>
 
       <Alert>{error}</Alert>
@@ -101,7 +108,7 @@ export default function WaiterHome() {
                 )}
                 <div className="mt-auto pt-4">
                   <Button className="w-full" disabled={busyId === table.id} onClick={() => onOpen(table, session)}>
-                    {busyId === table.id ? 'Opening...' : active ? 'Open Order' : 'Open Table'}
+                    {busyId === table.id ? 'Opening...' : active ? 'Open Session' : 'Start Session'}
                   </Button>
                 </div>
               </div>

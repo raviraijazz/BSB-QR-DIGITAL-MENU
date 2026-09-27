@@ -241,6 +241,14 @@ export function setCartNote(lines, key, notes) {
   return (lines || []).map((row) => (row.key === key ? { ...row, notes: String(notes || '') } : row))
 }
 
+export function removeCartLine(lines, key) {
+  return (lines || []).filter((row) => row.key !== key)
+}
+
+export function clearCart() {
+  return []
+}
+
 export async function createSessionOrder({ restaurantId, session, waiter, table, lines, notes }) {
   if (!restaurantId) return { data: null, error: { message: 'Restaurant required' } }
   if (!session?.id || session.restaurant_id !== restaurantId) {

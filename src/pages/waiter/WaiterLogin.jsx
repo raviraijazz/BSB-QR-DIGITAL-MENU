@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import Alert from '../../components/Alert'
 import Button from '../../components/Button'
 import Field, { inputClass } from '../../components/Field'
-import { friendlyAuthError, validateWaiterLogin } from '../../lib/auth'
+import { validateWaiterLogin } from '../../lib/auth'
 import { signInWaiter } from '../../services/waiterAuth'
 
 export default function WaiterLogin() {
@@ -11,6 +11,7 @@ export default function WaiterLogin() {
   const location = useLocation()
   const [waiterId, setWaiterId] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -28,14 +29,13 @@ export default function WaiterLogin() {
     if (nextError) {
       const msg = String(nextError.message || '')
       const known =
+        msg.includes('Invalid waiter ID or password') ||
+        msg.includes('not linked correctly') ||
         msg.includes('disabled') ||
-        msg.includes('Invalid waiter ID') ||
-        msg.includes('Waiter account not found') ||
-        msg.includes('not a waiter') ||
-        msg.includes('owner login') ||
-        msg.includes('not confirmed') ||
-        msg.includes('restaurant is not assigned')
-      setError(known ? msg : friendlyAuthError(nextError))
+        msg.includes('Restaurant assignment is missing') ||
+        msg.includes('Unable to sign in') ||
+        msg.includes('owner login')
+      setError(known ? msg : 'Unable to sign in right now. Please try again.')
       return
     }
     const from = location.state?.from
@@ -62,12 +62,16 @@ export default function WaiterLogin() {
         <Field label="Password">
           <input
             className={inputClass}
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
         </Field>
+        <label className="flex items-center gap-2 text-sm text-muted">
+          <input type="checkbox" checked={showPassword} onChange={(e) => setShowPassword(e.target.checked)} />
+          Show password
+        </label>
         <Button type="submit" className="w-full" disabled={busy}>
           {busy ? 'Signing in...' : 'Login'}
         </Button>

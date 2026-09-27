@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import Alert from '../../components/Alert'
 import Button from '../../components/Button'
 import EmptyState from '../../components/EmptyState'
 import Spinner from '../../components/Spinner'
-import { firstRelated, formatClock, formatMoney, formatQty, isOpenSession, kotStatusLabel, kotTypeLabel } from '../../lib/orderCart'
+import { firstRelated, formatClock, formatMoney, formatQty, isOpenSession, kotStatusLabel, kotTypeLabel, orderStatusLabel } from '../../lib/orderCart'
 import { tableHeading } from '../../lib/tableToken'
 import { getSession, tableForSession, waiterOwnsSession } from '../../services/tableSessions'
 import { listSessionOrders, orderSubtotal } from '../../services/waiterOrders'
@@ -12,10 +12,12 @@ import { listSessionOrders, orderSubtotal } from '../../services/waiterOrders'
 export default function WaiterSession() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { waiter, restaurant, tables } = useOutletContext()
   const [session, setSession] = useState(null)
   const [orders, setOrders] = useState([])
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState(location.state?.notice || '')
   const [loading, setLoading] = useState(true)
 
   const table = useMemo(() => tableForSession(tables, session), [tables, session])
@@ -42,6 +44,12 @@ export default function WaiterSession() {
     load()
   }, [restaurant?.id, sessionId, tables])
 
+  useEffect(() => {
+    if (location.state?.notice) {
+      navigate('.', { replace: true, state: {} })
+    }
+  }, [])
+
   if (loading) return <Spinner />
   if (!session) {
     return (
@@ -55,6 +63,7 @@ export default function WaiterSession() {
   }
 
   const open = isOpenSession(session)
+  const running = orders.reduce((sum, order) => sum + orderSubtotal(order.order_items || []), 0)
 
   return (
     <div className="space-y-6">
@@ -65,7 +74,7 @@ export default function WaiterSession() {
           </Link>
           <h1 className="mt-1 font-display text-3xl">{table ? tableHeading(table) : 'Table'}</h1>
           <p className="mt-1 text-sm text-muted">
-            {session.session_number} · {formatClock(session.started_at)} · {waiter.waiter_id}
+            {session.session_number} · {open ? 'Active session' : 'Closed'} · {formatClock(session.started_at)} · {waiter.waiter_id}
           </p>
         </div>
         {open ? (
@@ -75,7 +84,23 @@ export default function WaiterSession() {
         )}
       </div>
 
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-line bg-card px-4 py-3">
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Orders</p>
+          <p className="mt-1 font-display text-2xl">{orders.length}</p>
+        </div>
+        <div className="rounded-2xl border border-line bg-card px-4 py-3">
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Running total</p>
+          <p className="mt-1 font-display text-2xl">{formatMoney(running)}</p>
+        </div>
+        <div className="rounded-2xl border border-line bg-card px-4 py-3">
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Session</p>
+          <p className="mt-1 font-display text-2xl">{open ? 'Open' : 'Closed'}</p>
+        </div>
+      </div>
+
       <Alert>{error}</Alert>
+      <Alert type="success">{notice}</Alert>
 
       {orders.length === 0 ? (
         <EmptyState
@@ -98,12 +123,12 @@ export default function WaiterSession() {
                       {kot ? `KOT #${kot.kot_number} · ${kotTypeLabel(kot.kot_type)}` : 'Kitchen ticket pending'}
                     </p>
                     <p className="text-xs text-muted">
-                      {formatClock(order.created_at)} · {waiter.waiter_id}
+                      {formatClock(order.created_at)} · {waiter.waiter_id} · {orderStatusLabel(order.status)}
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="font-medium">{formatMoney(orderSubtotal(items))}</p>
-                    <p className="text-xs text-muted">{kot ? kotStatusLabel(kot.status) : 'Not sent to kitchen'}</p>
+                    <p className="text-xs text-muted">{kot ? kotStatusLabel(kot.status) : orderStatusLabel(order.status)}</p>
                   </div>
                 </div>
                 <ul className="mt-3 space-y-1 text-sm">

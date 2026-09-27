@@ -24,6 +24,24 @@ export function validateWaiterLogin({ waiterId, password }) {
   return ''
 }
 
+export function validateOwnerWaiterPasswordChange({ password, confirmPassword }) {
+  if (!password) return 'Password is required'
+  if (password.length < 6) return 'Password must be at least 6 characters'
+  if (!confirmPassword) return 'Confirm password required'
+  if (password !== confirmPassword) return 'Passwords do not match'
+  return ''
+}
+
+export function validateWaiterSelfPasswordChange({ currentPassword, newPassword, confirmPassword }) {
+  if (!currentPassword) return 'Current password is required'
+  if (!newPassword) return 'Password is required'
+  if (newPassword.length < 6) return 'Password must be at least 6 characters'
+  if (!confirmPassword) return 'Confirm password required'
+  if (newPassword !== confirmPassword) return 'Passwords do not match'
+  if (currentPassword === newPassword) return 'New password must be different'
+  return ''
+}
+
 export function normalizePhone(value) {
   return String(value || '').replace(/[\s-]/g, '').trim()
 }

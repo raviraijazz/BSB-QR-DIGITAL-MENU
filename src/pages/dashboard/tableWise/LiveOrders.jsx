@@ -129,7 +129,7 @@ export default function LiveOrders() {
                   <div className="min-w-0">
                     <p className="font-display text-xl">Order #{order.order_number}</p>
                     <p className="mt-0.5 text-sm text-muted">
-                      {table ? tableHeading(table) : 'Table'} · {session?.session_number || 'Session'} · {waiterLabel}
+                      {table ? tableHeading(table) : 'Table'} · {session?.session_number || 'Session'} · {waiterLabel} · {items.length} {items.length === 1 ? 'item' : 'items'}
                     </p>
                     <p className="text-xs text-muted">
                       {formatClock(order.created_at)}

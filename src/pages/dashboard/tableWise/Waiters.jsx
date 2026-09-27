@@ -16,7 +16,8 @@ import {
   listAssignments,
   saveWaiterTableAssignments,
 } from '../../../services/waiterAssignments'
-import { provisionWaiter } from '../../../services/waiterAuth'
+import { validateOwnerWaiterPasswordChange } from '../../../lib/auth'
+import { changeWaiterPassword, provisionWaiter } from '../../../services/waiterAuth'
 import {
   assignedTableCount,
   hasDuplicateWaiterId,
@@ -339,6 +340,52 @@ function ConfirmDisable({ waiter, busy, onClose, onConfirm }) {
   )
 }
 
+function ChangePasswordModal({ open, waiter, form, onChange, onClose, onSubmit, busy, error }) {
+  if (!open || !waiter) return null
+  return (
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-ink/40 p-4 sm:items-center" role="dialog" aria-modal="true">
+      <button type="button" className="absolute inset-0" aria-label="Close" onClick={onClose} />
+      <form onSubmit={onSubmit} className="relative z-10 w-full max-w-md rounded-2xl border border-line bg-card p-5 shadow-lg">
+        <h2 className="font-display text-xl">Change Password</h2>
+        <p className="mt-1 text-sm text-muted">
+          Set a new password for {waiter.full_name} ({waiter.waiter_id}). They will use Waiter ID and this password at /waiter/login.
+        </p>
+        <div className="mt-4 space-y-3">
+          <Alert>{error}</Alert>
+          <Field label="New Password">
+            <input
+              className={inputClass}
+              type="password"
+              placeholder="At least 6 characters"
+              value={form.password}
+              onChange={(e) => onChange('password', e.target.value)}
+              autoComplete="new-password"
+            />
+          </Field>
+          <Field label="Confirm New Password">
+            <input
+              className={inputClass}
+              type="password"
+              placeholder="Repeat password"
+              value={form.confirm_password}
+              onChange={(e) => onChange('confirm_password', e.target.value)}
+              autoComplete="new-password"
+            />
+          </Field>
+        </div>
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={busy}>
+            {busy ? 'Saving...' : 'Update Password'}
+          </Button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 function ConfirmDisableLogin({ waiter, busy, onClose, onConfirm }) {
   if (!waiter) return null
   return (
@@ -381,6 +428,7 @@ export default function Waiters() {
   const [selectedTableIds, setSelectedTableIds] = useState([])
   const [assignError, setAssignError] = useState('')
   const [enablingLogin, setEnablingLogin] = useState(null)
+  const [changingPassword, setChangingPassword] = useState(null)
 
   async function load() {
     if (!restaurant) {
@@ -416,6 +464,7 @@ export default function Waiters() {
     setPendingDisableLogin(null)
     setAssigning(null)
     setEnablingLogin(null)
+    setChangingPassword(null)
     setSelectedTableIds([])
     load()
   }, [restaurant?.id])
@@ -609,6 +658,52 @@ export default function Waiters() {
     load()
   }
 
+  function openChangePassword(item) {
+    setFormError('')
+    setForm({
+      ...emptyForm,
+      full_name: item.full_name || '',
+      waiter_id: item.waiter_id || '',
+      is_active: item.is_active !== false,
+    })
+    setChangingPassword(item)
+  }
+
+  function closeChangePassword() {
+    if (busy) return
+    setChangingPassword(null)
+    setFormError('')
+    setForm(emptyForm)
+  }
+
+  async function onChangePassword(event) {
+    event.preventDefault()
+    if (!changingPassword) return
+    const passwordError = validateOwnerWaiterPasswordChange({
+      password: form.password,
+      confirmPassword: form.confirm_password,
+    })
+    if (passwordError) {
+      setFormError(passwordError)
+      return
+    }
+    setBusy(true)
+    setFormError('')
+    const result = await changeWaiterPassword({
+      restaurantId: restaurant.id,
+      waiterRecordId: changingPassword.id,
+      password: form.password,
+    })
+    setBusy(false)
+    if (result.error) {
+      setFormError(result.error.message)
+      return
+    }
+    setNotice(`Password updated for ${changingPassword.full_name}.`)
+    setChangingPassword(null)
+    setForm(emptyForm)
+  }
+
   async function confirmDisableLogin() {
     if (!pendingDisableLogin) return
     setBusy(true)
@@ -732,6 +827,11 @@ export default function Waiters() {
                               Enable Login
                             </Button>
                           )}
+                          {waiterHasLogin(item) ? (
+                            <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => openChangePassword(item)}>
+                              Change Password
+                            </Button>
+                          ) : null}
                           <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => openEdit(item)}>
                             Edit
                           </Button>
@@ -787,6 +887,11 @@ export default function Waiters() {
                         Enable Login
                       </Button>
                     )}
+                    {waiterHasLogin(item) ? (
+                      <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => openChangePassword(item)}>
+                        Change Password
+                      </Button>
+                    ) : null}
                     <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => openEdit(item)}>
                       Edit
                     </Button>
@@ -825,6 +930,16 @@ export default function Waiters() {
         onChange={setFormField}
         onClose={closeEnableLogin}
         onSubmit={onEnableLogin}
+        busy={busy}
+        error={formError}
+      />
+      <ChangePasswordModal
+        open={Boolean(changingPassword)}
+        waiter={changingPassword}
+        form={form}
+        onChange={setFormField}
+        onClose={closeChangePassword}
+        onSubmit={onChangePassword}
         busy={busy}
         error={formError}
       />

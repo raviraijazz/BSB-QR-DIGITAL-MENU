@@ -12,7 +12,7 @@ import { normalizeFoodType } from '../../lib/foodType'
 import { listCategories } from '../../services/categories'
 import { listMenuItems } from '../../services/menuItems'
 import { getSession, tableForSession, waiterOwnsSession } from '../../services/tableSessions'
-import { buildCartLine, createSessionOrder, setCartNote, setCartQuantity, upsertCartLine } from '../../services/waiterOrders'
+import { buildCartLine, clearCart, createSessionOrder, removeCartLine, setCartNote, setCartQuantity, upsertCartLine } from '../../services/waiterOrders'
 
 const FILTERS = [
   { id: 'all', label: 'All' },
@@ -197,7 +197,10 @@ export default function WaiterOrder() {
       setError(nextError?.message || 'Could not send order')
       return
     }
-    navigate(`/waiter/sessions/${session.id}`, { replace: true })
+    navigate(`/waiter/sessions/${session.id}`, {
+      replace: true,
+      state: { notice: `Order #${data.order_number} sent.` },
+    })
   }
 
   if (loading) return <Spinner />
@@ -298,6 +301,13 @@ export default function WaiterOrder() {
                     value={line.notes || ''}
                     onChange={(e) => setLines((current) => setCartNote(current, line.key, e.target.value))}
                   />
+                  <button
+                    type="button"
+                    className="text-xs text-muted hover:text-ink"
+                    onClick={() => setLines((current) => removeCartLine(current, line.key))}
+                  >
+                    Remove
+                  </button>
                 </li>
               ))}
             </ul>
@@ -313,8 +323,11 @@ export default function WaiterOrder() {
             <Button variant="secondary" onClick={() => setStep('menu')}>
               Back to menu
             </Button>
+            <Button variant="secondary" disabled={lines.length === 0} onClick={() => setLines(clearCart())}>
+              Clear cart
+            </Button>
             <Button disabled={busy || lines.length === 0} onClick={sendOrder}>
-              {busy ? 'Sending...' : 'Send Order'}
+              {busy ? 'Sending...' : 'Place Order'}
             </Button>
           </div>
         </div>

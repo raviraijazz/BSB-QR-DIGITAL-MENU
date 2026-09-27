@@ -1,4 +1,4 @@
-import { Outlet, useNavigate } from 'react-router-dom'
+import { Link, Outlet, useNavigate } from 'react-router-dom'
 import Alert from '../components/Alert'
 import Button from '../components/Button'
 import Spinner from '../components/Spinner'
@@ -54,9 +54,14 @@ export default function WaiterLayout() {
               {waiter.full_name} · <span className="font-mono">{waiter.waiter_id}</span>
             </p>
           </div>
-          <button type="button" onClick={handleSignOut} className="shrink-0 text-sm text-muted hover:text-ink">
-            Logout
-          </button>
+          <div className="flex shrink-0 items-center gap-3">
+            <Link to="/waiter/account" className="text-sm text-muted hover:text-ink">
+              Account
+            </Link>
+            <button type="button" onClick={handleSignOut} className="text-sm text-muted hover:text-ink">
+              Logout
+            </button>
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">

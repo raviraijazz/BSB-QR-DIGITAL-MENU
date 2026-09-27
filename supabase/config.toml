@@ -1,2 +1,5 @@
 [functions.provision-waiter]
 verify_jwt = true
+
+[functions.manage-waiter-password]
+verify_jwt = true

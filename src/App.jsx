@@ -25,6 +25,7 @@ const Waiters = lazy(() => import('./pages/dashboard/tableWise/Waiters'))
 const Settings = lazy(() => import('./pages/dashboard/Settings'))
 const WaiterLogin = lazy(() => import('./pages/waiter/WaiterLogin'))
 const WaiterHome = lazy(() => import('./pages/waiter/WaiterHome'))
+const WaiterAccount = lazy(() => import('./pages/waiter/WaiterAccount'))
 const WaiterSession = lazy(() => import('./pages/waiter/WaiterSession'))
 const WaiterOrder = lazy(() => import('./pages/waiter/WaiterOrder'))
 const LiveOrders = lazy(() => import('./pages/dashboard/tableWise/LiveOrders'))
@@ -76,6 +77,7 @@ export default function App() {
                 }
               >
                 <Route index element={<WaiterHome />} />
+                <Route path="account" element={<WaiterAccount />} />
                 <Route path="sessions/:sessionId" element={<WaiterSession />} />
                 <Route path="sessions/:sessionId/order" element={<WaiterOrder />} />
               </Route>

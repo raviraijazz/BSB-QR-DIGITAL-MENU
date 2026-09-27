@@ -3,7 +3,8 @@ import { waiterAuthEmailFromWaiterId } from '../lib/auth'
 import { roleFromUser } from './profiles'
 
 const WAITER_SELECT = 'id, restaurant_id, waiter_id, full_name, is_active, auth_user_id, created_at'
-const DISABLED_MESSAGE = 'Your waiter account is currently disabled. Please contact the restaurant owner.'
+const DISABLED_MESSAGE = 'This waiter login is disabled. Contact the restaurant owner.'
+const UNEXPECTED_SIGNIN = 'Unable to sign in right now. Please try again.'
 
 export function waiterDisabledError() {
   return { message: DISABLED_MESSAGE }
@@ -48,18 +49,47 @@ export async function listMyAssignedTables(restaurantId, waiterUuid) {
     .eq('restaurant_id', restaurantId)
     .in('id', ids)
     .order('sort_order', { ascending: true })
-  return { data: data ?? [], error }
+  return { data: (data ?? []).filter((row) => row.is_active !== false), error }
 }
 
 function mapWaiterAuthError(error) {
   const msg = String(error?.message || '').toLowerCase()
   if (msg.includes('email not confirmed')) {
-    return { message: 'Account is not confirmed. Ask the restaurant owner to recreate the waiter login.' }
+    return { message: 'This waiter login is disabled. Contact the restaurant owner.' }
   }
   if (msg.includes('invalid login') || msg.includes('invalid credentials') || msg.includes('invalid_grant')) {
     return { message: 'Invalid waiter ID or password' }
   }
-  return error
+  return { message: UNEXPECTED_SIGNIN }
+}
+
+async function invokeOwnerFunction(name, payload, notDeployedMessage) {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+  if (sessionError) return { data: null, error: { message: UNEXPECTED_SIGNIN } }
+  const token = sessionData.session?.access_token
+  if (!token) return { data: null, error: { message: 'Not signed in' } }
+  const { data, error } = await supabase.functions.invoke(name, {
+    body: payload,
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (error) {
+    const context = error.context
+    if (context && typeof context.json === 'function') {
+      try {
+        const body = await context.json()
+        if (body?.error) return { data: null, error: { message: body.error } }
+      } catch {
+        /* fall through */
+      }
+    }
+    const text = String(error.message || '').toLowerCase()
+    if (text.includes('failed to send') || text.includes('not found') || text.includes('404')) {
+      return { data: null, error: { message: notDeployedMessage } }
+    }
+    return { data: null, error: { message: error.message || 'Could not complete the request' } }
+  }
+  if (data?.error) return { data: null, error: { message: data.error } }
+  return { data, error: null }
 }
 
 export async function signInWaiter(waiterId, password) {
@@ -89,17 +119,17 @@ export async function signInWaiter(waiterId, password) {
 
   if (waiterError) {
     await supabase.auth.signOut()
-    return { waiter: null, error: waiterError }
+    return { waiter: null, error: { message: UNEXPECTED_SIGNIN } }
   }
   if (!waiter) {
     await supabase.auth.signOut()
     const role = roleFromUser(user, profile)
     if (role === 'owner') return { waiter: null, error: { message: 'Use owner login instead.' } }
-    return { waiter: null, error: { message: 'Waiter account not found. Ask the restaurant owner to enable login.' } }
+    return { waiter: null, error: { message: 'This waiter account is not linked correctly. Contact the restaurant owner.' } }
   }
   if (!waiter.restaurant_id) {
     await supabase.auth.signOut()
-    return { waiter: null, error: { message: 'Waiter restaurant is not assigned.' } }
+    return { waiter: null, error: { message: 'Restaurant assignment is missing. Contact the restaurant owner.' } }
   }
   if (waiter.is_active === false) {
     await supabase.auth.signOut()
@@ -109,35 +139,43 @@ export async function signInWaiter(waiterId, password) {
 }
 
 export async function provisionWaiter(payload) {
-  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-  if (sessionError) return { data: null, error: sessionError }
-  const token = sessionData.session?.access_token
-  if (!token) return { data: null, error: { message: 'Not signed in' } }
-  const { data, error } = await supabase.functions.invoke('provision-waiter', {
-    body: payload,
-    headers: { Authorization: `Bearer ${token}` },
+  const result = await invokeOwnerFunction(
+    'provision-waiter',
+    payload,
+    'Waiter login setup is not deployed yet. Redeploy supabase/functions/provision-waiter.',
+  )
+  if (result.error) return { data: null, error: result.error }
+  return { data: result.data?.waiter || null, error: null }
+}
+
+export async function changeWaiterPassword({ restaurantId, waiterRecordId, password }) {
+  const result = await invokeOwnerFunction(
+    'manage-waiter-password',
+    {
+      restaurant_id: restaurantId,
+      waiter_record_id: waiterRecordId,
+      password,
+    },
+    'Waiter password management is not deployed yet. Deploy supabase/functions/manage-waiter-password.',
+  )
+  if (result.error) return { error: result.error }
+  return { error: null }
+}
+
+export async function changeOwnWaiterPassword({ waiterId, currentPassword, newPassword }) {
+  const email = waiterAuthEmailFromWaiterId(waiterId)
+  const { error: checkError } = await supabase.auth.signInWithPassword({
+    email,
+    password: currentPassword,
   })
-  if (error) {
-    const context = error.context
-    if (context && typeof context.json === 'function') {
-      try {
-        const body = await context.json()
-        if (body?.error) return { data: null, error: { message: body.error } }
-      } catch {
-        /* fall through */
-      }
+  if (checkError) {
+    const msg = String(checkError.message || '').toLowerCase()
+    if (msg.includes('invalid login') || msg.includes('invalid credentials') || msg.includes('invalid_grant')) {
+      return { error: { message: 'Current password is incorrect.' } }
     }
-    const text = String(error.message || '').toLowerCase()
-    if (text.includes('failed to send') || text.includes('not found') || text.includes('404')) {
-      return {
-        data: null,
-        error: {
-          message: 'Waiter login setup is not deployed yet. Redeploy supabase/functions/provision-waiter.',
-        },
-      }
-    }
-    return { data: null, error: { message: error.message || 'Could not create waiter login' } }
+    return { error: { message: UNEXPECTED_SIGNIN } }
   }
-  if (data?.error) return { data: null, error: { message: data.error } }
-  return { data: data?.waiter || null, error: null }
+  const { error: updateError } = await supabase.auth.updateUser({ password: newPassword })
+  if (updateError) return { error: { message: 'Unable to change password right now. Please try again.' } }
+  return { error: null }
 }
