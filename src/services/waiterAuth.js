@@ -52,10 +52,19 @@ export async function listMyAssignedTables(restaurantId, waiterUuid) {
   return { data: (data ?? []).filter((row) => row.is_active !== false), error }
 }
 
+function diag(event, extra) {
+  try {
+    console.info('[waiter-login]', { event, ...extra })
+  } catch {
+    /* ignore */
+  }
+}
+
 function mapWaiterAuthError(error) {
   const msg = String(error?.message || '').toLowerCase()
-  if (msg.includes('email not confirmed')) {
-    return { message: 'This waiter login is disabled. Contact the restaurant owner.' }
+  const code = String(error?.code || '').toLowerCase()
+  if (msg.includes('email not confirmed') || code === 'email_not_confirmed') {
+    return { message: 'This waiter login is not confirmed. Ask the restaurant owner to change the waiter password once.' }
   }
   if (msg.includes('invalid login') || msg.includes('invalid credentials') || msg.includes('invalid_grant')) {
     return { message: 'Invalid waiter ID or password' }
@@ -95,18 +104,29 @@ async function invokeOwnerFunction(name, payload, notDeployedMessage) {
 export async function signInWaiter(waiterId, password) {
   const trimmedId = String(waiterId || '').trim()
   const email = waiterAuthEmailFromWaiterId(trimmedId)
-  const { data: authData, error } = await supabase.auth.signInWithPassword({
+  diag('auth-start', { idLen: trimmedId.length, email })
+  const { error } = await supabase.auth.signInWithPassword({
     email,
     password,
   })
-  if (error) return { waiter: null, error: mapWaiterAuthError(error) }
-
-  let user = authData.user
-  if (!user?.id) {
-    const { data: userData } = await supabase.auth.getUser()
-    user = userData.user
+  if (error) {
+    diag('auth-error', {
+      message: String(error.message || ''),
+      code: String(error.code || ''),
+      status: error.status || null,
+    })
+    return { waiter: null, error: mapWaiterAuthError(error) }
   }
+
+  const { data: userData, error: userError } = await supabase.auth.getUser()
+  const user = userData.user
   const userId = user?.id
+  diag('auth-user', {
+    hasUserId: Boolean(userId),
+    roleMeta: String(user?.user_metadata?.role || ''),
+    emailMatch: String(user?.email || '').toLowerCase() === email,
+    userError: userError ? String(userError.message || '') : '',
+  })
   if (!userId) {
     await supabase.auth.signOut()
     return { waiter: null, error: { message: 'Invalid waiter ID or password' } }
@@ -118,23 +138,28 @@ export async function signInWaiter(waiterId, password) {
   ])
 
   if (waiterError) {
+    diag('waiter-lookup-error', { message: String(waiterError.message || '') })
     await supabase.auth.signOut()
     return { waiter: null, error: { message: UNEXPECTED_SIGNIN } }
   }
   if (!waiter) {
+    diag('waiter-missing', { profileRole: String(profile?.role || '') })
     await supabase.auth.signOut()
     const role = roleFromUser(user, profile)
     if (role === 'owner') return { waiter: null, error: { message: 'Use owner login instead.' } }
     return { waiter: null, error: { message: 'This waiter account is not linked correctly. Contact the restaurant owner.' } }
   }
   if (!waiter.restaurant_id) {
+    diag('waiter-no-restaurant', { waiterUuid: waiter.id })
     await supabase.auth.signOut()
     return { waiter: null, error: { message: 'Restaurant assignment is missing. Contact the restaurant owner.' } }
   }
   if (waiter.is_active === false) {
+    diag('waiter-disabled', { waiterUuid: waiter.id })
     await supabase.auth.signOut()
     return { waiter: null, error: waiterDisabledError() }
   }
+  diag('auth-ok', { waiterUuid: waiter.id, restaurantId: waiter.restaurant_id })
   return { waiter, error: null }
 }
 

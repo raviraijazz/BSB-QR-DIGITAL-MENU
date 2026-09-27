@@ -32,6 +32,7 @@ export default function WaiterLogin() {
         msg.includes('Invalid waiter ID or password') ||
         msg.includes('not linked correctly') ||
         msg.includes('disabled') ||
+        msg.includes('not confirmed') ||
         msg.includes('Restaurant assignment is missing') ||
         msg.includes('Unable to sign in') ||
         msg.includes('owner login')

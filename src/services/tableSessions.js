@@ -3,13 +3,21 @@ import { OPEN_SESSION_STATUSES, isOpenSession } from '../lib/orderCart'
 
 const SESSION_SELECT = 'id, restaurant_id, session_number, primary_table_id, status, started_at, closed_at, created_at'
 
-function friendlySessionError(error) {
+function friendlySessionError(error, kind = 'generic') {
   if (!error) return error
   const text = String(error.message || '').toLowerCase()
   if (text.includes('already has an open session')) return { message: 'This table already has an open session.' }
+  if (text.includes('assigned to you')) return { message: 'This table is not assigned to you.' }
+  if (text.includes('disabled')) return { message: 'This waiter login is disabled. Contact the restaurant owner.' }
   if (text.includes('does not belong')) return { message: 'That table does not belong to this restaurant.' }
+  if (text.includes('start_waiter_table_session') && (text.includes('does not exist') || text.includes('schema cache') || text.includes('could not find'))) {
+    return { message: 'Table sessions are not ready. Run supabase/waiter-start-session.sql in the SQL Editor.' }
+  }
   if (text.includes('table_sessions') && (text.includes('does not exist') || text.includes('schema cache'))) {
     return { message: 'Table sessions are not ready. Run supabase/table-wise-order-fixed.sql in the SQL Editor.' }
+  }
+  if (kind === 'start' || text.includes('row-level security') || text.includes('not allowed')) {
+    return { message: 'Unable to start this table session. Please try again.' }
   }
   return error
 }
@@ -83,22 +91,6 @@ export async function getSession(sessionId, restaurantId) {
   return { data, error: friendlySessionError(error) }
 }
 
-async function nextSessionNumber(restaurantId) {
-  const { data, error } = await supabase.rpc('next_session_number', { p_restaurant_id: restaurantId })
-  if (error || !data) {
-    const { data: rows } = await supabase
-      .from('table_sessions')
-      .select('session_number')
-      .eq('restaurant_id', restaurantId)
-    const max = (rows || []).reduce((n, row) => {
-      const value = Number(String(row.session_number || '').replace(/\D/g, '')) || 0
-      return value > n ? value : n
-    }, 0)
-    return { number: `S${String(max + 1).padStart(3, '0')}`, error: error && !rows ? error : null }
-  }
-  return { number: data, error: null }
-}
-
 export async function openTableSession(restaurantId, table) {
   if (!restaurantId) return { data: null, error: { message: 'Restaurant required' } }
   if (!table?.id || table.restaurant_id !== restaurantId) {
@@ -110,18 +102,10 @@ export async function openTableSession(restaurantId, table) {
   const current = sessionForTable(existing.data, table.id)
   if (current) return { data: current, error: null }
 
-  const { number, error: numberError } = await nextSessionNumber(restaurantId)
-  if (numberError) return { data: null, error: friendlySessionError(numberError) }
-
-  const { data, error } = await supabase
-    .from('table_sessions')
-    .insert({
-      restaurant_id: restaurantId,
-      session_number: number,
-      primary_table_id: table.id,
-      status: 'active',
-    })
-    .select(SESSION_SELECT)
-    .single()
-  return { data, error: friendlySessionError(error) }
+  const { data, error } = await supabase.rpc('start_waiter_table_session', {
+    p_restaurant_id: restaurantId,
+    p_table_id: table.id,
+  })
+  if (!error && data) return { data, error: null }
+  return { data: null, error: friendlySessionError(error, 'start') }
 }

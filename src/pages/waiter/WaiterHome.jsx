@@ -54,7 +54,7 @@ export default function WaiterHome() {
     const { data, error: nextError } = await openTableSession(restaurant.id, table)
     setBusyId('')
     if (nextError || !data) {
-      setError(nextError?.message || 'Could not open table')
+      setError(nextError?.message || 'Unable to start this table session. Please try again.')
       return
     }
     navigate(`/waiter/sessions/${data.id}`)
