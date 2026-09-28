@@ -134,6 +134,13 @@ export default function NavIcon({ name, className = 'h-4 w-4' }) {
     external: <path d="M14 5h5v5M19 5l-9 9M9 5H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3" />,
     menuToggle: <path d="M4 7h16M4 12h16M4 17h16" />,
     close: <path d="M6 6l12 12M18 6 6 18" />,
+    more: (
+      <>
+        <circle cx="12" cy="6" r="1.2" fill="currentColor" stroke="none" />
+        <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" />
+        <circle cx="12" cy="18" r="1.2" fill="currentColor" stroke="none" />
+      </>
+    ),
     available: <path d="M20 7 10 17l-5-5" />,
     sold: <circle cx="12" cy="12" r="8" />,
     folder: (

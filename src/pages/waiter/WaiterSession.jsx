@@ -4,7 +4,7 @@ import Alert from '../../components/Alert'
 import Button from '../../components/Button'
 import EmptyState from '../../components/EmptyState'
 import Spinner from '../../components/Spinner'
-import { firstRelated, formatClock, formatMoney, formatQty, isOpenSession, kotStatusLabel, kotTypeLabel, orderStatusLabel } from '../../lib/orderCart'
+import { firstRelated, formatClock, formatMoney, formatQty, isOpenSession, kotStatusLabel, orderStatusLabel } from '../../lib/orderCart'
 import { tableHeading } from '../../lib/tableToken'
 import { getSession, tableForSession, waiterOwnsSession } from '../../services/tableSessions'
 import { listSessionOrders, orderSubtotal } from '../../services/waiterOrders'
@@ -74,13 +74,16 @@ export default function WaiterSession() {
           </Link>
           <h1 className="mt-1 font-display text-3xl">{table ? tableHeading(table) : 'Table'}</h1>
           <p className="mt-1 text-sm text-muted">
-            {session.session_number} · {open ? 'Active session' : 'Closed'} · {formatClock(session.started_at)} · {waiter.waiter_id}
+            {restaurant?.name || 'Restaurant'} · {waiter.full_name} · <span className="font-mono">{waiter.waiter_id}</span>
+          </p>
+          <p className="text-sm text-muted">
+            {session.session_number} · {open ? 'Active session' : 'Closed'} · Started {formatClock(session.started_at)}
           </p>
         </div>
         {open ? (
           <Button onClick={() => navigate(`/waiter/sessions/${session.id}/order`)}>Add Order</Button>
         ) : (
-          <p className="text-sm text-muted">This session is no longer open for orders.</p>
+          <p className="text-sm text-muted">This table session is no longer active.</p>
         )}
       </div>
 
@@ -105,7 +108,7 @@ export default function WaiterSession() {
       {orders.length === 0 ? (
         <EmptyState
           title="No orders yet"
-          body="Create the first order for this table. Each send creates a new order and one kitchen ticket."
+          body="Add the first order for this table. Each Place Order creates a new order with only the items in the cart."
           actionLabel={open ? 'Add Order' : undefined}
           onAction={open ? () => navigate(`/waiter/sessions/${session.id}/order`) : undefined}
         />
@@ -120,10 +123,7 @@ export default function WaiterSession() {
                   <div>
                     <p className="font-display text-xl">Order #{order.order_number}</p>
                     <p className="mt-0.5 text-sm text-muted">
-                      {kot ? `KOT #${kot.kot_number} · ${kotTypeLabel(kot.kot_type)}` : 'Kitchen ticket pending'}
-                    </p>
-                    <p className="text-xs text-muted">
-                      {formatClock(order.created_at)} · {waiter.waiter_id} · {orderStatusLabel(order.status)}
+                      {formatClock(order.created_at)} · {waiter.full_name} · {orderStatusLabel(order.status)}
                     </p>
                   </div>
                   <div className="text-right">

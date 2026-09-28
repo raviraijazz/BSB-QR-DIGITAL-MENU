@@ -44,6 +44,84 @@ function QtyControl({ value, onChange }) {
   )
 }
 
+function CartPanel({
+  table,
+  session,
+  lines,
+  notes,
+  totals,
+  busy,
+  onNotes,
+  onQty,
+  onNote,
+  onRemove,
+  onClear,
+  onPlace,
+  onBack,
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-col rounded-2xl border border-line bg-card p-4">
+      <div className="mb-3">
+        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Cart</p>
+        <p className="mt-1 font-display text-xl leading-tight">{table ? tableHeading(table) : 'Table'}</p>
+        <p className="text-xs text-muted">{session?.session_number || 'Session'} · new order only</p>
+      </div>
+      {lines.length === 0 ? (
+        <p className="text-sm text-muted">Add items from the menu.</p>
+      ) : (
+        <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto">
+          {lines.map((line) => (
+            <li key={line.key} className="space-y-2 rounded-2xl border border-line bg-white p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium leading-snug">{line.item_name}</p>
+                  <p className="text-sm text-muted">
+                    {line.variant_name ? `${line.variant_name} · ` : ''}
+                    {formatMoney(line.unit_price)} each
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <QtyControl value={line.quantity} onChange={(qty) => onQty(line.key, qty)} />
+                  <p className="w-16 text-right text-sm font-medium tabular-nums">{formatMoney(line.unit_price * line.quantity)}</p>
+                </div>
+              </div>
+              <input
+                className={inputClass}
+                placeholder="Item note for kitchen (optional)"
+                value={line.notes || ''}
+                onChange={(e) => onNote(line.key, e.target.value)}
+              />
+              <button type="button" className="text-xs text-muted hover:text-ink" onClick={() => onRemove(line.key)}>
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Field label="Order notes" hint="Optional. Item notes print on the kitchen ticket; this note stays on the order.">
+        <textarea className={`${inputClass} min-h-[72px]`} value={notes} onChange={(e) => onNotes(e.target.value)} />
+      </Field>
+      <div className="mt-3 flex items-center justify-between rounded-2xl border border-line bg-paper/70 px-4 py-3">
+        <p className="text-sm text-muted">{totals.items} items</p>
+        <p className="font-display text-xl">{formatMoney(totals.subtotal)}</p>
+      </div>
+      <div className="mt-3 flex flex-col gap-2">
+        {onBack ? (
+          <Button variant="secondary" onClick={onBack}>
+            Continue ordering
+          </Button>
+        ) : null}
+        <Button variant="secondary" disabled={lines.length === 0} onClick={onClear}>
+          Clear cart
+        </Button>
+        <Button className="w-full" disabled={busy || lines.length === 0} onClick={onPlace}>
+          {busy ? 'Sending...' : 'Place Order'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function MenuItemRow({ item, onAdd }) {
   const soldOut = itemIsSoldOut(item)
   const variants = orderableVariants(item)
@@ -112,6 +190,7 @@ export default function WaiterOrder() {
   const [notes, setNotes] = useState('')
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
+  const [categoryId, setCategoryId] = useState('all')
   const [step, setStep] = useState('menu')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -139,7 +218,7 @@ export default function WaiterOrder() {
       setSession(nextSession)
       setCategories(cats.data ?? [])
       setItems(menu.data ?? [])
-      setError(cats.error?.message || menu.error?.message || '')
+      setError(cats.error?.message || menu.error?.message ? 'Unable to load the menu. Please try again.' : '')
       setLoading(false)
     }
     load()
@@ -151,6 +230,7 @@ export default function WaiterOrder() {
   const grouped = useMemo(
     () =>
       (categories || [])
+        .filter((category) => categoryId === 'all' || category.id === categoryId)
         .map((category) => ({
           ...category,
           items: (items || []).filter(
@@ -158,7 +238,7 @@ export default function WaiterOrder() {
           ),
         }))
         .filter((category) => category.items.length > 0),
-    [categories, items, query, filter],
+    [categories, items, query, filter, categoryId],
   )
 
   const totals = cartTotals(lines)
@@ -174,12 +254,13 @@ export default function WaiterOrder() {
   }
 
   async function sendOrder() {
+    if (busy) return
     if (!session || !isOpenSession(session)) {
-      setError('This session is no longer open for orders.')
+      setError('This table session is no longer active.')
       return
     }
     if (!table) {
-      setError('This table is not assigned to you.')
+      setError('You are not assigned to this table.')
       return
     }
     setBusy(true)
@@ -192,14 +273,16 @@ export default function WaiterOrder() {
       lines,
       notes,
     })
-    setBusy(false)
     if (nextError || !data) {
-      setError(nextError?.message || 'Could not send order')
+      setBusy(false)
+      setError(nextError?.message || 'Unable to place order. Please try again.')
       return
     }
+    setLines(clearCart())
+    setNotes('')
     navigate(`/waiter/sessions/${session.id}`, {
       replace: true,
-      state: { notice: `Order #${data.order_number} sent.` },
+      state: { notice: data.order_number ? `Order placed. Order #${data.order_number}.` : 'Order placed' },
     })
   }
 
@@ -216,9 +299,23 @@ export default function WaiterOrder() {
   }
 
   const open = isOpenSession(session)
+  const cartProps = {
+    table,
+    session,
+    lines,
+    notes,
+    totals,
+    busy,
+    onNotes: setNotes,
+    onQty: (key, qty) => setLines((current) => setCartQuantity(current, key, qty)),
+    onNote: (key, value) => setLines((current) => setCartNote(current, key, value)),
+    onRemove: (key) => setLines((current) => removeCartLine(current, key)),
+    onClear: () => setLines(clearCart()),
+    onPlace: sendOrder,
+  }
 
   return (
-    <div className="space-y-5 pb-28">
+    <div className={`space-y-5 ${open ? 'lg:pb-0 pb-28' : ''}`}>
       <div>
         <Link
           to={`/waiter/sessions/${session.id}`}
@@ -227,114 +324,99 @@ export default function WaiterOrder() {
           {table ? tableHeading(table) : 'Session'} · {session.session_number}
         </Link>
         <h1 className="mt-1 font-display text-3xl">{step === 'review' ? 'Review Order' : 'Add Order'}</h1>
-        <p className="mt-1 text-sm text-muted">New order for this session. Previous orders are not changed.</p>
+        <p className="mt-1 text-sm text-muted">
+          {restaurant?.name || 'Restaurant'} · {waiter.full_name} · new order only. Submitted orders stay unchanged.
+        </p>
       </div>
 
       <Alert>{error}</Alert>
 
       {!open ? (
-        <EmptyState title="Session closed" body="This table session is no longer open for orders." actionTo="/waiter" actionLabel="My Tables" />
-      ) : step === 'menu' ? (
-        <>
-          <div className="space-y-2">
-            <input
-              className={inputClass}
-              type="search"
-              placeholder="Search menu items..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <div className="flex gap-1.5 overflow-x-auto" role="group" aria-label="Filter menu items">
-              {FILTERS.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => setFilter(option.id)}
-                  className={`shrink-0 rounded-full px-3 py-1.5 text-[12px] font-medium ${
-                    filter === option.id ? 'bg-forest text-[#f5ead8]' : 'bg-paper text-muted'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {grouped.length === 0 ? (
-            <EmptyState title="No menu items" body="Ask the owner to add categories and items, or clear search." />
-          ) : (
-            <div className="space-y-6">
-              {grouped.map((category) => (
-                <section key={category.id}>
-                  <h2 className="mb-2 font-display text-xl">{category.name}</h2>
-                  <ul className="space-y-2">
-                    {category.items.map((item) => (
-                      <MenuItemRow key={item.id} item={item} onAdd={addItem} />
-                    ))}
-                  </ul>
-                </section>
-              ))}
-            </div>
-          )}
-        </>
+        <EmptyState title="Session closed" body="This table session is no longer active." actionTo="/waiter" actionLabel="My Tables" />
       ) : (
-        <div className="space-y-4">
-          {lines.length === 0 ? (
-            <EmptyState title="Cart is empty" body="Add items from the menu first." actionLabel="Back to menu" onAction={() => setStep('menu')} />
-          ) : (
-            <ul className="space-y-2">
-              {lines.map((line) => (
-                <li key={line.key} className="space-y-2 rounded-2xl border border-line bg-card p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-medium leading-snug">{line.item_name}</p>
-                      <p className="text-sm text-muted">{formatMoney(line.unit_price)} each</p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <QtyControl value={line.quantity} onChange={(qty) => setLines((current) => setCartQuantity(current, line.key, qty))} />
-                      <p className="w-16 text-right text-sm font-medium tabular-nums">{formatMoney(line.unit_price * line.quantity)}</p>
-                    </div>
-                  </div>
-                  <input
-                    className={inputClass}
-                    placeholder="Item note for kitchen (optional)"
-                    value={line.notes || ''}
-                    onChange={(e) => setLines((current) => setCartNote(current, line.key, e.target.value))}
-                  />
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-5">
+          <div className={step === 'review' ? 'hidden lg:block' : ''}>
+            <div className="space-y-2">
+              <input
+                className={inputClass}
+                type="search"
+                placeholder="Search menu items..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              <div className="no-scrollbar flex gap-1.5 overflow-x-auto" role="group" aria-label="Filter menu items">
+                {FILTERS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setFilter(option.id)}
+                    className={`shrink-0 rounded-full px-3 py-1.5 text-[12px] font-medium ${
+                      filter === option.id ? 'bg-forest text-[#f5ead8]' : 'bg-paper text-muted'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              {categories.length > 0 ? (
+                <div className="no-scrollbar flex gap-1.5 overflow-x-auto" role="group" aria-label="Menu categories">
                   <button
                     type="button"
-                    className="text-xs text-muted hover:text-ink"
-                    onClick={() => setLines((current) => removeCartLine(current, line.key))}
+                    onClick={() => setCategoryId('all')}
+                    className={`shrink-0 rounded-full px-3 py-1.5 text-[12px] font-medium ${
+                      categoryId === 'all' ? 'bg-ink text-[#f5ead8]' : 'bg-paper text-muted'
+                    }`}
                   >
-                    Remove
+                    All categories
                   </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Field label="Order notes" hint="Optional. Item notes print on the kitchen ticket; this note stays on the order.">
-            <textarea className={`${inputClass} min-h-[88px]`} value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </Field>
-          <div className="flex items-center justify-between rounded-2xl border border-line bg-card px-4 py-3">
-            <p className="text-sm text-muted">{totals.items} items</p>
-            <p className="font-display text-xl">{formatMoney(totals.subtotal)}</p>
+                  {categories.map((category) => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      onClick={() => setCategoryId(category.id)}
+                      className={`shrink-0 rounded-full px-3 py-1.5 text-[12px] font-medium ${
+                        categoryId === category.id ? 'bg-ink text-[#f5ead8]' : 'bg-paper text-muted'
+                      }`}
+                    >
+                      {category.name}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            {grouped.length === 0 ? (
+              <div className="mt-4">
+                <EmptyState title="No menu items" body="Ask the owner to add categories and items, or clear search." />
+              </div>
+            ) : (
+              <div className="mt-5 space-y-6">
+                {grouped.map((category) => (
+                  <section key={category.id}>
+                    <h2 className="mb-2 font-display text-xl">{category.name}</h2>
+                    <ul className="space-y-2">
+                      {category.items.map((item) => (
+                        <MenuItemRow key={item.id} item={item} onAdd={addItem} />
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={() => setStep('menu')}>
-              Back to menu
-            </Button>
-            <Button variant="secondary" disabled={lines.length === 0} onClick={() => setLines(clearCart())}>
-              Clear cart
-            </Button>
-            <Button disabled={busy || lines.length === 0} onClick={sendOrder}>
-              {busy ? 'Sending...' : 'Place Order'}
-            </Button>
-          </div>
+
+          <aside className={`lg:sticky lg:top-4 ${step === 'menu' ? 'hidden lg:block' : ''}`}>
+            {lines.length === 0 && step === 'review' ? (
+              <EmptyState title="Cart is empty" body="Add items from the menu first." actionLabel="Back to menu" onAction={() => setStep('menu')} />
+            ) : (
+              <CartPanel {...cartProps} onBack={step === 'review' ? () => setStep('menu') : undefined} />
+            )}
+          </aside>
         </div>
       )}
 
       {open && step === 'menu' ? (
-        <div className="fixed inset-x-0 bottom-0 border-t border-line bg-card/95 px-4 py-3 backdrop-blur">
+        <div className="fixed inset-x-0 bottom-0 border-t border-line bg-card/95 px-4 py-3 backdrop-blur lg:hidden">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
             <p className="text-sm">
               {totals.items} items · <span className="font-medium">{formatMoney(totals.subtotal)}</span>

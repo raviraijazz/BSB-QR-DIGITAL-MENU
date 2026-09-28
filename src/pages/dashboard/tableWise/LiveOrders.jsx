@@ -121,7 +121,9 @@ export default function LiveOrders() {
             const session = orderSession(order)
             const table = tableById[order.source_table_id] || tableById[session?.primary_table_id]
             const waiter = orderWaiter(order)
-            const waiterLabel = waiter?.waiter_id || 'Waiter'
+            const waiterLabel = waiter?.full_name && waiter?.waiter_id
+              ? `${waiter.full_name} · ${waiter.waiter_id}`
+              : waiter?.waiter_id || waiter?.full_name || 'Waiter'
             const kot = firstRelated(order.kots)
             return (
               <section key={order.id} className="rounded-2xl border border-line bg-card p-4">

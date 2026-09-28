@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase'
-import { cartLineKey, isOpenSession, itemIsSoldOut, lineAmount, orderableVariants } from '../lib/orderCart'
+import { cartLineKey, isOpenSession, itemIsSoldOut, orderableVariants } from '../lib/orderCart'
 import { normalizeFoodType } from '../lib/foodType'
 
 const ORDER_SELECT = 'id, restaurant_id, session_id, waiter_id, source_table_id, order_number, status, notes, created_at, updated_at'
@@ -8,40 +8,48 @@ const KOT_SELECT = 'id, restaurant_id, session_id, order_id, kot_number, kot_typ
 const KOT_ITEM_SELECT = 'id, kot_id, order_item_id, item_name, quantity, notes, created_at'
 const ORDER_WITH_KOT = `${ORDER_SELECT}, order_items(${ORDER_ITEM_SELECT}), kots(${KOT_SELECT}, kot_items(${KOT_ITEM_SELECT}))`
 
-function friendlyOrderError(error) {
+function friendlyOrderError(error, kind = 'submit') {
   if (!error) return error
   const text = String(error.message || '').toLowerCase()
+  if (text.includes('submit_waiter_order') && (text.includes('does not exist') || text.includes('schema cache') || text.includes('could not find'))) {
+    return { message: 'Orders are not ready. Run supabase/waiter-order-submit.sql in the SQL Editor.' }
+  }
   if (text.includes('orders') && (text.includes('does not exist') || text.includes('schema cache'))) {
     return { message: 'Orders are not ready. Run supabase/table-wise-order-fixed.sql in the SQL Editor.' }
   }
-  if (text.includes('duplicate') && text.includes('order_number')) {
-    return { message: 'Could not assign an order number. Try again.' }
+  if (text.includes('no longer available') || text.includes('sold out')) {
+    return { message: 'This item is no longer available.' }
   }
-  if (text.includes('does not belong')) return { message: 'This order does not belong to the current restaurant.' }
+  if (text.includes('select a variant')) return { message: 'Select a variant.' }
+  if (text.includes('no longer open') || text.includes('no longer active')) {
+    return { message: 'This table session is no longer active.' }
+  }
+  if (text.includes('assigned to you') || text.includes('not assigned')) {
+    return { message: 'You are not assigned to this table.' }
+  }
+  if (text.includes('duplicate') && text.includes('order_number')) {
+    return { message: 'Unable to place order. Please try again.' }
+  }
+  if (text.includes('add at least one item')) return { message: 'Add at least one item.' }
+  if (text.includes('disabled')) return { message: 'This waiter login is disabled. Contact the restaurant owner.' }
+  if (text.includes('does not belong')) return { message: 'Unable to place order. Please try again.' }
   if (text.includes('kots') && (text.includes('does not exist') || text.includes('schema cache'))) {
     return { message: 'Kitchen tickets are not ready. Run supabase/kitchen-kot.sql in the SQL Editor.' }
   }
-  if (text.includes('not allowed') || text.includes('row-level security')) {
-    return { message: 'You can only order on tables assigned to you.' }
+  if (kind === 'list') {
+    if (text.includes('not allowed') || text.includes('row-level security')) {
+      return { message: 'Unable to load orders. Please try again.' }
+    }
+    return { message: 'Unable to load orders. Please try again.' }
   }
-  return error
+  if (text.includes('not allowed') || text.includes('row-level security')) {
+    return { message: 'Unable to place order. Please try again.' }
+  }
+  return { message: 'Unable to place order. Please try again.' }
 }
 
 export function orderSubtotal(items) {
   return (items || []).reduce((sum, item) => sum + (Number(item.line_total) || 0), 0)
-}
-
-async function nextOrderNumber(restaurantId) {
-  const { data, error } = await supabase.rpc('next_order_number', { p_restaurant_id: restaurantId })
-  if (error || !data) {
-    const { data: rows } = await supabase.from('orders').select('order_number').eq('restaurant_id', restaurantId)
-    const max = (rows || []).reduce((n, row) => {
-      const value = Number(String(row.order_number || '').replace(/\D/g, '')) || 0
-      return value > n ? value : n
-    }, 0)
-    return { number: String(max + 1).padStart(3, '0'), error: error && !rows ? error : null }
-  }
-  return { number: data, error: null }
 }
 
 export async function listSessionOrders(restaurantId, sessionId) {
@@ -66,7 +74,7 @@ export async function listSessionOrders(restaurantId, sessionId) {
         .eq('restaurant_id', restaurantId)
         .eq('session_id', sessionId)
         .order('created_at', { ascending: true })
-      return { data: bare.data ?? [], error: friendlyOrderError(bare.error || error) }
+      return { data: bare.data ?? [], error: friendlyOrderError(bare.error || error, 'list') }
     }
     return { data: fallback.data ?? [], error: null }
   }
@@ -96,7 +104,7 @@ export async function listRestaurantOrders(restaurantId) {
         .select(ORDER_SELECT)
         .eq('restaurant_id', restaurantId)
         .order('created_at', { ascending: false })
-      if (bare.error) return { data: [], error: friendlyOrderError(error) }
+      if (bare.error) return { data: [], error: friendlyOrderError(error, 'list') }
       return { data: bare.data ?? [], error: null }
     }
     return { data: fallback.data ?? [], error: null }
@@ -104,23 +112,11 @@ export async function listRestaurantOrders(restaurantId) {
   return { data: data ?? [], error: null }
 }
 
-async function nextKotNumber(restaurantId) {
-  const { data, error } = await supabase.rpc('next_kot_number', { p_restaurant_id: restaurantId })
-  if (error || !data) {
-    const { data: rows } = await supabase.from('kots').select('kot_number').eq('restaurant_id', restaurantId)
-    const max = (rows || []).reduce((n, row) => {
-      const value = Number(String(row.kot_number || '').replace(/\D/g, '')) || 0
-      return value > n ? value : n
-    }, 0)
-    return { number: String(max + 1).padStart(3, '0'), error: error && !rows ? error : null }
-  }
-  return { number: data, error: null }
-}
-
 function payloadItems(rows) {
   return rows.map((line) => ({
     menu_item_id: line.menu_item_id || null,
     item_name: line.item_name,
+    variant_name: String(line.variant_name || '').trim(),
     description: String(line.description || '').trim(),
     food_type: line.food_type || null,
     unit_price: Number(line.unit_price) || 0,
@@ -129,76 +125,11 @@ function payloadItems(rows) {
   }))
 }
 
-async function createKotForOrder(order, items) {
-  const existing = await supabase
-    .from('kots')
-    .select(`${KOT_SELECT}, kot_items(${KOT_ITEM_SELECT})`)
-    .eq('order_id', order.id)
-    .eq('restaurant_id', order.restaurant_id)
-    .maybeSingle()
-  if (existing.data) return { data: existing.data, error: null }
-
-  const prior = await supabase
-    .from('orders')
-    .select('id')
-    .eq('session_id', order.session_id)
-    .eq('restaurant_id', order.restaurant_id)
-    .neq('id', order.id)
-    .limit(1)
-  const kotType = prior.data?.length ? 'add_on' : 'new'
-  const { number, error: numberError } = await nextKotNumber(order.restaurant_id)
-  if (numberError) return { data: null, error: friendlyOrderError(numberError) }
-
-  const { data: kot, error: kotError } = await supabase
-    .from('kots')
-    .insert({
-      restaurant_id: order.restaurant_id,
-      session_id: order.session_id,
-      order_id: order.id,
-      kot_number: number,
-      kot_type: kotType,
-      status: 'new',
-    })
-    .select(KOT_SELECT)
-    .single()
-  if (kotError) {
-    const raced = await supabase
-      .from('kots')
-      .select(`${KOT_SELECT}, kot_items(${KOT_ITEM_SELECT})`)
-      .eq('order_id', order.id)
-      .eq('restaurant_id', order.restaurant_id)
-      .maybeSingle()
-    if (raced.data) return { data: raced.data, error: null }
-    return { data: null, error: friendlyOrderError(kotError) }
-  }
-
-  const kotItems = (items || []).map((item) => ({
-    kot_id: kot.id,
-    order_item_id: item.id,
-    item_name: item.item_name,
-    quantity: Number(item.quantity) || 1,
-    notes: String(item.notes || '').trim(),
-  }))
-  const { data: createdItems, error: itemsError } = await supabase
-    .from('kot_items')
-    .insert(kotItems)
-    .select(KOT_ITEM_SELECT)
-  if (itemsError) {
-    await supabase.from('kots').delete().eq('id', kot.id).eq('restaurant_id', order.restaurant_id)
-    return { data: null, error: friendlyOrderError(itemsError) }
-  }
-  await supabase
-    .from('order_items')
-    .update({ sent_to_kitchen: true })
-    .eq('order_id', order.id)
-  return { data: { ...kot, kot_items: createdItems ?? [] }, error: null }
-}
-
 export function buildCartLine(item, variantName) {
   if (!item?.id) return { error: { message: 'Item required' } }
-  if (itemIsSoldOut(item)) return { error: { message: 'This item is sold out.' } }
+  if (itemIsSoldOut(item)) return { error: { message: 'This item is no longer available.' } }
   const variants = orderableVariants(item)
-  if (!variants.length) return { error: { message: 'This item is sold out.' } }
+  if (!variants.length) return { error: { message: 'This item is no longer available.' } }
   const hasNamed = variants.some((row) => row.name)
   let chosen = variants[0]
   if (hasNamed) {
@@ -255,13 +186,13 @@ export async function createSessionOrder({ restaurantId, session, waiter, table,
     return { data: null, error: { message: 'Open a table session first.' } }
   }
   if (!isOpenSession(session)) {
-    return { data: null, error: { message: 'This session is no longer open for orders.' } }
+    return { data: null, error: { message: 'This table session is no longer active.' } }
   }
   if (!waiter?.id || waiter.restaurant_id !== restaurantId) {
-    return { data: null, error: { message: 'Waiter account required' } }
+    return { data: null, error: { message: 'Unable to place order. Please try again.' } }
   }
   if (!table?.id || table.restaurant_id !== restaurantId) {
-    return { data: null, error: { message: 'This table is not assigned to you.' } }
+    return { data: null, error: { message: 'You are not assigned to this table.' } }
   }
   const rows = (lines || []).filter((line) => Number(line.quantity) > 0)
   if (!rows.length) return { data: null, error: { message: 'Add at least one item.' } }
@@ -274,59 +205,5 @@ export async function createSessionOrder({ restaurantId, session, waiter, table,
     p_notes: String(notes || '').trim(),
   })
   if (!rpc.error && rpc.data) return { data: rpc.data, error: null }
-
-  const rpcText = String(rpc.error?.message || '').toLowerCase()
-  const rpcMissing = rpcText.includes('could not find') || rpcText.includes('does not exist') || rpcText.includes('schema cache')
-  if (rpc.error && !rpcMissing) return { data: null, error: friendlyOrderError(rpc.error) }
-
-  const { number, error: numberError } = await nextOrderNumber(restaurantId)
-  if (numberError) return { data: null, error: friendlyOrderError(numberError) }
-
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .insert({
-      restaurant_id: restaurantId,
-      session_id: session.id,
-      waiter_id: waiter.id,
-      source_table_id: table.id,
-      order_number: number,
-      status: 'new',
-      notes: String(notes || '').trim(),
-    })
-    .select(ORDER_SELECT)
-    .single()
-  if (orderError || !order) return { data: null, error: friendlyOrderError(orderError) }
-
-  const items = rows.map((line) => ({
-    order_id: order.id,
-    menu_item_id: line.menu_item_id || null,
-    item_name: line.item_name,
-    description: String(line.description || '').trim(),
-    food_type: line.food_type || null,
-    unit_price: Number(line.unit_price) || 0,
-    quantity: Number(line.quantity) || 1,
-    line_total: lineAmount(line.unit_price, line.quantity),
-    notes: String(line.notes || '').trim(),
-    sent_to_kitchen: false,
-  }))
-
-  const { data: createdItems, error: itemsError } = await supabase
-    .from('order_items')
-    .insert(items)
-    .select(ORDER_ITEM_SELECT)
-  if (itemsError) {
-    await supabase.from('orders').delete().eq('id', order.id).eq('restaurant_id', restaurantId)
-    return { data: null, error: friendlyOrderError(itemsError) }
-  }
-
-  const kot = await createKotForOrder(order, createdItems ?? [])
-  if (kot.error || !kot.data) {
-    await supabase.from('orders').delete().eq('id', order.id).eq('restaurant_id', restaurantId)
-    return {
-      data: null,
-      error: kot.error || { message: 'Kitchen ticket could not be created. The order was not sent. Try again.' },
-    }
-  }
-
-  return { data: { ...order, order_items: createdItems ?? [], kots: [kot.data] }, error: null }
+  return { data: null, error: friendlyOrderError(rpc.error) }
 }
