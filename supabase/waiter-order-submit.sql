@@ -1,6 +1,10 @@
 -- BSB Digital Menu — Phase 7 waiter order submit (additive).
 -- Replaces submit_waiter_order with restaurant/item/variant checks.
 -- Does not drop tables, does not change waiter login or session start.
+-- One order = one KOT. Unique indexes prevent duplicate tickets on retry.
+
+create unique index if not exists kots_order_id_key on public.kots (order_id);
+create unique index if not exists kot_items_order_item_id_key on public.kot_items (order_item_id);
 
 create or replace function public.submit_waiter_order(
   p_restaurant_id uuid,
@@ -241,12 +245,18 @@ begin
     v_kot_type,
     'new'
   )
+  on conflict (order_id) do nothing
   returning * into v_kot;
+
+  if v_kot.id is null then
+    select * into v_kot from public.kots where order_id = v_order.id;
+  end if;
 
   insert into public.kot_items (kot_id, order_item_id, item_name, quantity, notes)
   select v_kot.id, oi.id, oi.item_name, oi.quantity, oi.notes
   from public.order_items oi
-  where oi.order_id = v_order.id;
+  where oi.order_id = v_order.id
+  on conflict (order_item_id) do nothing;
 
   select jsonb_build_object(
     'id', v_order.id,

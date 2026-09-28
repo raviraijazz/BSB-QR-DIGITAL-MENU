@@ -135,7 +135,7 @@ export default function LiveOrders() {
                     </p>
                     <p className="text-xs text-muted">
                       {formatClock(order.created_at)}
-                      {kot ? ` · KOT #${kot.kot_number} · ${kotTypeLabel(kot.kot_type)}` : ''}
+                      {kot ? ` · KOT #${kot.kot_number} · ${kotTypeLabel(kot.kot_type)} · ${kotStatusLabel(kot.status)}` : ' · No KOT'}
                     </p>
                   </div>
                   <div className="text-right">

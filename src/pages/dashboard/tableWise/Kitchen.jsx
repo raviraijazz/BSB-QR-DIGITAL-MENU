@@ -4,7 +4,6 @@ import Alert from '../../../components/Alert'
 import Button from '../../../components/Button'
 import EmptyState from '../../../components/EmptyState'
 import Spinner from '../../../components/Spinner'
-import { printKot } from '../../../lib/kotPrint'
 import {
   elapsedLabel,
   firstRelated,
@@ -15,13 +14,13 @@ import {
 } from '../../../lib/orderCart'
 import { TABLE_WISE_HOME } from '../../../lib/tableWiseNav'
 import { tableHeading } from '../../../lib/tableToken'
-import { listRestaurantKots, markKotPrinted, updateKotStatus } from '../../../services/kots'
+import { listRestaurantKots, nextKotStatus, updateKotStatus } from '../../../services/kots'
 import { listTables } from '../../../services/tables'
 
-const TABS = [
-  { id: 'new', label: 'NEW' },
-  { id: 'preparing', label: 'PREPARING' },
-  { id: 'ready', label: 'READY' },
+const COLUMNS = [
+  { id: 'new', label: 'NEW', hint: 'Incoming tickets', accent: 'border-l-sky-400', pill: 'bg-sky-100 text-sky-900' },
+  { id: 'preparing', label: 'PREPARING', hint: 'In kitchen', accent: 'border-l-orange-400', pill: 'bg-orange-100 text-orange-900' },
+  { id: 'ready', label: 'READY', hint: 'Ready to serve', accent: 'border-l-forest', pill: 'bg-forest/10 text-forest' },
 ]
 
 function kotOrder(kot) {
@@ -36,36 +35,88 @@ function kotSession(kot) {
   return firstRelated(kotOrder(kot)?.table_sessions)
 }
 
-function nextStatus(status) {
-  if (status === 'new') return 'preparing'
-  if (status === 'preparing') return 'ready'
-  return null
-}
-
 function actionLabel(status) {
-  if (status === 'new') return 'Start'
+  if (status === 'new') return 'Start Preparing'
   if (status === 'preparing') return 'Mark Ready'
   return ''
+}
+
+function KotCard({ kot, table, waiter, order, working, onStatus }) {
+  const items = kot.kot_items || []
+  const next = nextKotStatus(kot.status)
+  const column = COLUMNS.find((row) => row.id === kot.status) || COLUMNS[0]
+  const waiterLabel = waiter?.full_name && waiter?.waiter_id
+    ? `${waiter.full_name} · ${waiter.waiter_id}`
+    : waiter?.waiter_id || waiter?.full_name || 'Waiter'
+
+  return (
+    <article className={`flex min-h-[240px] flex-col rounded-2xl border border-line border-l-4 bg-card p-4 shadow-sm ${column.accent}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-display text-2xl leading-none">KOT #{kot.kot_number}</p>
+          <p className="mt-2 font-display text-xl leading-tight">{table ? tableHeading(table) : 'Table'}</p>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${column.pill}`}>
+            {kotStatusLabel(kot.status)}
+          </span>
+          <span className="rounded-full bg-paper px-2.5 py-0.5 text-[11px] font-medium text-muted">
+            {kotTypeLabel(kot.kot_type)}
+          </span>
+        </div>
+      </div>
+      <p className="mt-2 text-sm text-muted">
+        {waiterLabel}
+        {order?.order_number ? ` · Order #${order.order_number}` : ''}
+      </p>
+      <p className="text-xs text-muted">
+        {formatClock(kot.created_at)}
+        {elapsedLabel(kot.created_at) ? ` · ${elapsedLabel(kot.created_at)}` : ''}
+        {` · ${items.length} ${items.length === 1 ? 'item' : 'items'}`}
+      </p>
+      <ul className="mt-3 space-y-1.5 text-sm">
+        {items.map((item) => (
+          <li key={item.id} className="flex justify-between gap-3">
+            <span className="min-w-0">
+              <span className="font-medium">{item.item_name}</span>
+              {item.notes ? <span className="mt-0.5 block text-xs font-medium text-accent-dark">Special: {item.notes}</span> : null}
+            </span>
+            <span className="shrink-0 tabular-nums text-muted">×{formatQty(item.quantity)}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-auto pt-4">
+        {next ? (
+          <Button className="w-full" disabled={working} onClick={() => onStatus(kot, next)}>
+            {working ? 'Updating...' : actionLabel(kot.status)}
+          </Button>
+        ) : (
+          <p className="rounded-xl bg-forest/10 px-3 py-2 text-center text-sm font-medium text-forest">Ready</p>
+        )}
+      </div>
+    </article>
+  )
 }
 
 export default function Kitchen() {
   const { restaurant, loading } = useOutletContext()
   const [kots, setKots] = useState([])
   const [tables, setTables] = useState([])
-  const [tab, setTab] = useState('new')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(true)
   const [workingId, setWorkingId] = useState('')
 
-  async function load() {
-    if (!restaurant?.id) {
+  const restaurantId = restaurant?.id
+
+  async function load(silent = false) {
+    if (!restaurantId) {
       setKots([])
       setTables([])
       setBusy(false)
       return
     }
-    setBusy(true)
-    const [nextKots, nextTables] = await Promise.all([listRestaurantKots(restaurant.id), listTables(restaurant.id)])
+    if (!silent) setBusy(true)
+    const [nextKots, nextTables] = await Promise.all([listRestaurantKots(restaurantId), listTables(restaurantId)])
     setKots(nextKots.data ?? [])
     setTables(nextTables.data ?? [])
     setError(nextKots.error?.message || nextTables.error?.message || '')
@@ -74,19 +125,20 @@ export default function Kitchen() {
 
   useEffect(() => {
     load()
-  }, [restaurant?.id])
+    if (!restaurantId) return undefined
+    const timer = window.setInterval(() => load(true), 8000)
+    return () => window.clearInterval(timer)
+  }, [restaurantId])
 
   const tableById = useMemo(() => Object.fromEntries((tables || []).map((table) => [table.id, table])), [tables])
 
-  const counts = useMemo(() => {
-    const next = { new: 0, preparing: 0, ready: 0 }
+  const grouped = useMemo(() => {
+    const next = { new: [], preparing: [], ready: [] }
     for (const kot of kots || []) {
-      if (next[kot.status] != null) next[kot.status] += 1
+      if (next[kot.status]) next[kot.status].push(kot)
     }
     return next
   }, [kots])
-
-  const visible = useMemo(() => (kots || []).filter((kot) => kot.status === tab), [kots, tab])
 
   function tableFor(kot) {
     const order = kotOrder(kot)
@@ -100,22 +152,11 @@ export default function Kitchen() {
     const { data, error: nextError } = await updateKotStatus(kot.id, restaurant.id, status)
     setWorkingId('')
     if (nextError || !data) {
-      setError(nextError?.message || 'Could not update kitchen status')
+      setError(nextError?.message || 'Unable to update kitchen status. Please try again.')
+      load(true)
       return
     }
     setKots((current) => current.map((row) => (row.id === kot.id ? { ...row, ...data } : row)))
-  }
-
-  async function onPrint(kot) {
-    printKot({
-      restaurant,
-      kot,
-      table: tableFor(kot),
-      waiter: kotWaiter(kot),
-      order: kotOrder(kot),
-    })
-    const { data } = await markKotPrinted(kot.id, restaurant.id)
-    if (data) setKots((current) => current.map((row) => (row.id === kot.id ? { ...row, printed_at: data.printed_at } : row)))
   }
 
   if (loading || busy) return <Spinner />
@@ -130,95 +171,63 @@ export default function Kitchen() {
     )
   }
 
+  const empty = !kots.length
+
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <Link to={TABLE_WISE_HOME} className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted hover:text-ink">
             Table-wise order
           </Link>
           <h1 className="mt-1 font-display text-3xl">Kitchen / KOT</h1>
-          <p className="mt-1 text-sm text-muted">{restaurant.name} · tickets from waiter orders. No billing.</p>
+          <p className="mt-1 text-sm text-muted">{restaurant.name} · one ticket per order. Add-ons never change the first KOT.</p>
         </div>
-        <Button variant="secondary" onClick={load}>
+        <Button variant="secondary" onClick={() => load()}>
           Refresh
         </Button>
       </div>
 
       <Alert>{error}</Alert>
 
-      <div className="flex gap-1.5 overflow-x-auto" role="tablist" aria-label="Kitchen status">
-        {TABS.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === option.id}
-            onClick={() => setTab(option.id)}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-[12px] font-medium ${
-              tab === option.id ? 'bg-forest text-[#f5ead8]' : 'bg-paper text-muted'
-            }`}
-          >
-            {option.label} {counts[option.id] || 0}
-          </button>
-        ))}
-      </div>
-
-      {visible.length === 0 ? (
+      {empty ? (
         <EmptyState
-          title={`No ${kotStatusLabel(tab).toLowerCase()} tickets`}
-          body="KOTs appear here after a waiter sends an order. Add-on orders create a new ticket with only the new items."
+          title="No kitchen tickets yet"
+          body="KOTs appear here after a waiter places an order. Each Place Order creates one ticket with only that order's items."
         />
       ) : (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {visible.map((kot) => {
-            const order = kotOrder(kot)
-            const waiter = kotWaiter(kot)
-            const table = tableFor(kot)
-            const items = kot.kot_items || []
-            const next = nextStatus(kot.status)
+        <div className="grid gap-4 xl:grid-cols-3">
+          {COLUMNS.map((column) => {
+            const rows = grouped[column.id] || []
             return (
-              <article key={kot.id} className="flex min-h-[260px] flex-col rounded-2xl border border-line bg-card p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
+              <section key={column.id} className="min-w-0">
+                <div className="mb-3 flex items-end justify-between gap-2">
                   <div>
-                    <p className="font-display text-2xl leading-none">KOT #{kot.kot_number}</p>
-                    <p className="mt-2 font-display text-xl leading-tight">{table ? tableHeading(table) : 'Table'}</p>
+                    <h2 className="font-display text-xl leading-none">{column.label}</h2>
+                    <p className="mt-1 text-xs text-muted">{column.hint}</p>
                   </div>
-                  <div className="text-right">
-                    <span className="rounded-full bg-paper px-2.5 py-0.5 text-[11px] font-medium text-forest">
-                      {kotTypeLabel(kot.kot_type)}
-                    </span>
-                    <p className="mt-2 text-xs text-muted">{elapsedLabel(kot.created_at) || formatClock(kot.created_at)}</p>
+                  <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${column.pill}`}>{rows.length}</span>
+                </div>
+                {rows.length === 0 ? (
+                  <p className="rounded-2xl border border-dashed border-line bg-white/70 px-4 py-8 text-center text-sm text-muted">
+                    No {kotStatusLabel(column.id).toLowerCase()} tickets
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {rows.map((kot) => (
+                      <KotCard
+                        key={kot.id}
+                        kot={kot}
+                        table={tableFor(kot)}
+                        waiter={kotWaiter(kot)}
+                        order={kotOrder(kot)}
+                        working={workingId === kot.id}
+                        onStatus={onStatus}
+                      />
+                    ))}
                   </div>
-                </div>
-                <p className="mt-2 text-sm text-muted">
-                  {waiter?.waiter_id || 'Waiter'}
-                  {order?.order_number ? ` · Order #${order.order_number}` : ''}
-                  {` · ${formatClock(kot.created_at)}`}
-                </p>
-                <ul className="mt-3 space-y-1 text-sm">
-                  {items.map((item) => (
-                    <li key={item.id}>
-                      <span className="font-medium">
-                        {formatQty(item.quantity)} × {item.item_name}
-                      </span>
-                      {item.notes ? <span className="block text-xs text-muted">{item.notes}</span> : null}
-                    </li>
-                  ))}
-                </ul>
-                <div className="mt-auto flex flex-wrap gap-2 pt-4">
-                  {next ? (
-                    <Button className="flex-1" disabled={workingId === kot.id} onClick={() => onStatus(kot, next)}>
-                      {workingId === kot.id ? 'Updating...' : actionLabel(kot.status)}
-                    </Button>
-                  ) : (
-                    <p className="flex-1 self-center text-sm text-muted">{kotStatusLabel(kot.status)}</p>
-                  )}
-                  <Button variant="secondary" onClick={() => onPrint(kot)}>
-                    Print
-                  </Button>
-                </div>
-              </article>
+                )}
+              </section>
             )
           })}
         </div>

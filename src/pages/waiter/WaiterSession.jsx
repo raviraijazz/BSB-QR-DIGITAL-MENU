@@ -4,7 +4,7 @@ import Alert from '../../components/Alert'
 import Button from '../../components/Button'
 import EmptyState from '../../components/EmptyState'
 import Spinner from '../../components/Spinner'
-import { firstRelated, formatClock, formatMoney, formatQty, isOpenSession, kotStatusLabel, orderStatusLabel } from '../../lib/orderCart'
+import { firstRelated, formatClock, formatMoney, formatQty, isOpenSession, kotStatusLabel, kotTypeLabel, orderStatusLabel } from '../../lib/orderCart'
 import { tableHeading } from '../../lib/tableToken'
 import { getSession, tableForSession, waiterOwnsSession } from '../../services/tableSessions'
 import { listSessionOrders, orderSubtotal } from '../../services/waiterOrders'
@@ -22,9 +22,9 @@ export default function WaiterSession() {
 
   const table = useMemo(() => tableForSession(tables, session), [tables, session])
 
-  async function load() {
+  async function load(silent = false) {
     if (!restaurant?.id || !sessionId) return
-    setLoading(true)
+    if (!silent) setLoading(true)
     const { data, error: sessionError } = await getSession(sessionId, restaurant.id)
     if (sessionError || !data || !waiterOwnsSession(tables, data)) {
       setSession(null)
@@ -42,6 +42,12 @@ export default function WaiterSession() {
 
   useEffect(() => {
     load()
+  }, [restaurant?.id, sessionId, tables])
+
+  useEffect(() => {
+    if (!restaurant?.id || !sessionId) return undefined
+    const timer = window.setInterval(() => load(true), 8000)
+    return () => window.clearInterval(timer)
   }, [restaurant?.id, sessionId, tables])
 
   useEffect(() => {
@@ -123,8 +129,15 @@ export default function WaiterSession() {
                   <div>
                     <p className="font-display text-xl">Order #{order.order_number}</p>
                     <p className="mt-0.5 text-sm text-muted">
-                      {formatClock(order.created_at)} · {waiter.full_name} · {orderStatusLabel(order.status)}
+                      {formatClock(order.created_at)} · {waiter.full_name}
                     </p>
+                    {kot ? (
+                      <p className="mt-1 text-sm text-muted">
+                        KOT #{kot.kot_number} · {kotTypeLabel(kot.kot_type)} · {kotStatusLabel(kot.status)}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-sm text-muted">{orderStatusLabel(order.status)}</p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="font-medium">{formatMoney(orderSubtotal(items))}</p>

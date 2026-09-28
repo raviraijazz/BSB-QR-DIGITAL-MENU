@@ -57,7 +57,7 @@ export function formatClock(value) {
 
 export function kotTypeLabel(value) {
   const type = String(value || 'new')
-  if (type === 'add_on') return 'ADD ON'
+  if (type === 'add_on') return 'ADD-ON'
   if (type === 'modification') return 'MODIFICATION'
   if (type === 'cancellation') return 'CANCELLATION'
   if (type === 'transfer') return 'TRANSFER'
