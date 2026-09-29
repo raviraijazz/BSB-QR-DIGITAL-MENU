@@ -4,8 +4,9 @@ import Alert from '../../components/Alert'
 import Button from '../../components/Button'
 import EmptyState from '../../components/EmptyState'
 import Spinner from '../../components/Spinner'
-import { firstRelated, formatClock, formatMoney, formatQty, isOpenSession, kotStatusLabel, kotTypeLabel, orderStatusLabel } from '../../lib/orderCart'
+import { applyBillDiscount, firstRelated, formatBillMoney, formatClock, formatQty, isOpenSession, kotStatusLabel, kotTypeLabel, orderStatusLabel, sessionOrderTotals } from '../../lib/orderCart'
 import { tableHeading } from '../../lib/tableToken'
+import { getSessionBill } from '../../services/bills'
 import { getSession, tableForSession, waiterOwnsSession } from '../../services/tableSessions'
 import { listSessionOrders, orderSubtotal } from '../../services/waiterOrders'
 
@@ -16,6 +17,7 @@ export default function WaiterSession() {
   const { waiter, restaurant, tables } = useOutletContext()
   const [session, setSession] = useState(null)
   const [orders, setOrders] = useState([])
+  const [bill, setBill] = useState(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState(location.state?.notice || '')
   const [loading, setLoading] = useState(true)
@@ -29,14 +31,19 @@ export default function WaiterSession() {
     if (sessionError || !data || !waiterOwnsSession(tables, data)) {
       setSession(null)
       setOrders([])
+      setBill(null)
       setError(sessionError?.message || 'Session not found or not assigned to you.')
       setLoading(false)
       return
     }
-    const { data: nextOrders, error: orderError } = await listSessionOrders(restaurant.id, data.id)
+    const [{ data: nextOrders, error: orderError }, nextBill] = await Promise.all([
+      listSessionOrders(restaurant.id, data.id),
+      getSessionBill(restaurant.id, data.id),
+    ])
     setSession(data)
     setOrders(nextOrders ?? [])
-    setError(orderError?.message || '')
+    setBill(nextBill.data || null)
+    setError(orderError?.message || nextBill.error?.message || '')
     setLoading(false)
   }
 
@@ -69,7 +76,8 @@ export default function WaiterSession() {
   }
 
   const open = isOpenSession(session)
-  const running = orders.reduce((sum, order) => sum + orderSubtotal(order.order_items || []), 0)
+  const totals = sessionOrderTotals(orders)
+  const running = applyBillDiscount(totals.subtotal, bill?.discount_type, bill?.discount_value)
 
   return (
     <div className="space-y-6">
@@ -93,18 +101,22 @@ export default function WaiterSession() {
         )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <div className="rounded-2xl border border-line bg-card px-4 py-3">
           <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Orders</p>
-          <p className="mt-1 font-display text-2xl">{orders.length}</p>
+          <p className="mt-1 font-display text-2xl">{totals.orderCount}</p>
         </div>
         <div className="rounded-2xl border border-line bg-card px-4 py-3">
-          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Running total</p>
-          <p className="mt-1 font-display text-2xl">{formatMoney(running)}</p>
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Subtotal</p>
+          <p className="mt-1 font-display text-2xl">{formatBillMoney(totals.subtotal)}</p>
         </div>
         <div className="rounded-2xl border border-line bg-card px-4 py-3">
-          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Session</p>
-          <p className="mt-1 font-display text-2xl">{open ? 'Open' : 'Closed'}</p>
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Discount</p>
+          <p className="mt-1 font-display text-2xl">{running.discountAmount ? formatBillMoney(running.discountAmount) : 'None'}</p>
+        </div>
+        <div className="rounded-2xl border border-line bg-card px-4 py-3">
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Payable</p>
+          <p className="mt-1 font-display text-2xl">{formatBillMoney(running.payable)}</p>
         </div>
       </div>
 
@@ -113,7 +125,7 @@ export default function WaiterSession() {
 
       {orders.length === 0 ? (
         <EmptyState
-          title="No orders yet"
+          title="Waiting for first order"
           body="Add the first order for this table. Each Place Order creates a new order with only the items in the cart."
           actionLabel={open ? 'Add Order' : undefined}
           onAction={open ? () => navigate(`/waiter/sessions/${session.id}/order`) : undefined}

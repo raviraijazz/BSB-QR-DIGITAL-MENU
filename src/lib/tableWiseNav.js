@@ -30,10 +30,8 @@ export const TABLE_WISE_MODULES = [
     to: '/dashboard/table-wise/bills',
     label: 'Running Bills',
     icon: 'bills',
-    lines: ['View active table/session bills'],
-    ready: false,
-    title: 'Running Bills',
-    body: 'Active session bills will appear here once table sessions and billing are active.',
+    lines: ['View active table/session bills', 'Apply percentage or amount discount'],
+    ready: true,
   },
   {
     key: 'collections',
