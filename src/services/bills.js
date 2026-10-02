@@ -123,6 +123,7 @@ export async function ensureSessionBill(restaurantId, session, orders, existingB
   const snapshot = billSnapshot(totals.subtotal, current?.discount_type, current?.discount_value)
 
   if (current) {
+    if (current.status === 'paid' || current.status === 'cancelled') return { data: current, error: null }
     const same =
       Number(current.subtotal) === snapshot.subtotal &&
       Number(current.discount_amount) === snapshot.discount_amount &&
@@ -167,7 +168,7 @@ export async function ensureSessionBill(restaurantId, session, orders, existingB
 export async function saveBillDiscount(restaurantId, bill, subtotal, discountType, discountValue) {
   if (!restaurantId || !bill?.id) return { data: null, error: { message: 'Running bill not found.' } }
   if (bill.status && bill.status !== 'open') {
-    return { data: null, error: { message: 'This bill is no longer open.' } }
+    return { data: null, error: { message: bill.status === 'paid' ? 'This bill is already settled.' : 'Discount cannot change after a payment is recorded.' } }
   }
   const snapshot = billSnapshot(subtotal, discountType, discountValue)
   const { data, error } = await supabase

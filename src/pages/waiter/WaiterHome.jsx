@@ -5,7 +5,8 @@ import Button from '../../components/Button'
 import EmptyState from '../../components/EmptyState'
 import Spinner from '../../components/Spinner'
 import { formatClock, formatMoney } from '../../lib/orderCart'
-import { tableHeading } from '../../lib/tableToken'
+import { mergedTablesHint, sessionTablesLabel, tableHeading } from '../../lib/tableToken'
+import { tablesForSession } from '../../services/tableMoves'
 import { listOpenSessions, openTableSession, sessionForTable } from '../../services/tableSessions'
 import { listRestaurantOrders, orderSubtotal } from '../../services/waiterOrders'
 
@@ -111,12 +112,16 @@ export default function WaiterHome() {
           {cards.map(({ table, session, totals }) => {
             const active = Boolean(session)
             const billing = session?.status === 'bill_requested' || session?.status === 'payment_pending'
+            const group = session ? tablesForSession(tables, session) : []
+            const mergedHint = mergedTablesHint(group)
             return (
               <div key={table.id} className="flex min-h-[196px] flex-col rounded-[1.6rem] border border-line bg-card p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-display text-xl leading-tight">{tableHeading(table)}</p>
-                    {table.name && table.name !== table.table_number ? (
+                    {mergedHint ? (
+                      <p className="mt-0.5 truncate text-sm font-medium text-forest">{sessionTablesLabel(group, { compact: true })}</p>
+                    ) : table.name && table.name !== table.table_number ? (
                       <p className="mt-0.5 truncate text-sm text-muted">{table.name}</p>
                     ) : null}
                   </div>
@@ -133,6 +138,7 @@ export default function WaiterHome() {
                   <div className="mt-2 rounded-xl border border-line bg-paper/70 px-3 py-2">
                     <p className="text-xs text-muted">
                       {session.session_number} · {formatClock(session.started_at)}
+                      {mergedHint ? ` · ${mergedHint}` : ''}
                     </p>
                     <div className="mt-1 flex items-baseline justify-between gap-2">
                       <p className="font-display text-lg leading-none">{totals?.amount ? formatMoney(totals.amount) : '—'}</p>

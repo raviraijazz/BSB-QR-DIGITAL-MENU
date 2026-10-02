@@ -9,7 +9,8 @@ import NavIcon from '../../components/NavIcon'
 import Spinner from '../../components/Spinner'
 import { tableMenuUrl } from '../../lib/menuUrl'
 import { elapsedLabel, formatClock, formatMoney } from '../../lib/orderCart'
-import { nextTableNumber, tableHeading } from '../../lib/tableToken'
+import { mergedTablesHint, nextTableNumber, sessionTablesLabel, tableHeading } from '../../lib/tableToken'
+import { MergeTablesDialog, TransferTableDialog } from '../../components/TableMoveDialogs'
 import {
   canvasToBlob,
   canvasToDataUrl,
@@ -28,6 +29,7 @@ import {
   listTables,
   updateTable,
 } from '../../services/tables'
+import { mergeTableSessions, tablesForSession, transferTableSession } from '../../services/tableMoves'
 import { listOpenSessions, sessionForTable } from '../../services/tableSessions'
 import { assignmentsByTableId, listAssignments } from '../../services/waiterAssignments'
 import { listRestaurantOrders, orderSubtotal } from '../../services/waiterOrders'
@@ -303,6 +305,7 @@ function TableFloorCard({
   table,
   waiter,
   session,
+  sessionTables,
   totals,
   menuOpen,
   onOpen,
@@ -313,6 +316,8 @@ function TableFloorCard({
   onCopy,
   onToggle,
   onRemove,
+  onMerge,
+  onTransfer,
 }) {
   const seats = tableCapacity(table)
   const status = floorStatus(table, session)
@@ -320,6 +325,9 @@ function TableFloorCard({
   const qrActive = isTableActive(table)
   const amount = totals?.amount || 0
   const itemCount = totals?.items || 0
+  const group = sessionTables || []
+  const merged = group.length > 1
+  const mergedHint = mergedTablesHint(group)
 
   return (
     <div
@@ -328,7 +336,10 @@ function TableFloorCard({
       <div className="flex items-start justify-between gap-2">
         <button type="button" onClick={() => onOpen(table)} className="min-w-0 text-left">
           <p className="font-display text-lg leading-tight">{tableHeading(table)}</p>
-          <p className="mt-1 text-xs text-muted">{seats ? `${seats} seats` : 'Capacity not set'}</p>
+          <p className="mt-1 text-xs text-muted">
+            {merged ? sessionTablesLabel(group, { compact: true }) : seats ? `${seats} seats` : 'Capacity not set'}
+          </p>
+          {mergedHint ? <p className="mt-1 text-[11px] font-medium text-forest">{mergedHint}</p> : null}
         </button>
         <div className="flex items-start gap-1" data-table-menu>
           <StatusPill status={status} />
@@ -355,6 +366,16 @@ function TableFloorCard({
           <button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-paper" onClick={() => onEdit(table)}>
             Edit Table
           </button>
+          {session ? (
+            <>
+              <button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-paper" onClick={() => onMerge(table)}>
+                Merge Tables
+              </button>
+              <button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-paper" onClick={() => onTransfer(table)}>
+                Transfer Table
+              </button>
+            </>
+          ) : null}
           <button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-paper" onClick={() => onAssign()}>
             Assign Waiter
           </button>
@@ -397,8 +418,11 @@ function TableFloorCard({
             </div>
             <div className="mt-1 flex items-baseline justify-between gap-2">
               <p className="font-display text-lg leading-none">{amount ? formatMoney(amount) : '—'}</p>
-              <p className="text-[11px] text-muted">{itemCount ? `${itemCount} items` : 'No items yet'}</p>
+              <p className="text-[11px] text-muted">
+                {totals?.orders ? `${totals.orders} ${totals.orders === 1 ? 'order' : 'orders'}` : itemCount ? `${itemCount} items` : 'No items yet'}
+              </p>
             </div>
+            {merged ? <p className="mt-1 text-[11px] text-muted">{sessionTablesLabel(group, { compact: true })}</p> : null}
           </div>
         ) : qrActive ? (
           <p className="text-xs text-forest">Ready for service</p>
@@ -415,6 +439,7 @@ function TableDetailDrawer({
   table,
   waiter,
   session,
+  sessionTables,
   totals,
   restaurant,
   onClose,
@@ -425,6 +450,8 @@ function TableDetailDrawer({
   onCopy,
   onToggle,
   onRemove,
+  onMerge,
+  onTransfer,
   busy,
 }) {
   if (!open || !table) return null
@@ -434,6 +461,8 @@ function TableDetailDrawer({
   const amount = totals?.amount || 0
   const itemCount = totals?.items || 0
   const orderCount = totals?.orders || 0
+  const group = sessionTables || []
+  const mergedHint = mergedTablesHint(group)
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-ink/40" role="dialog" aria-modal="true">
@@ -483,6 +512,7 @@ function TableDetailDrawer({
             {session ? (
               <>
                 <p className="mt-1 font-medium">{session.session_number || 'Open session'}</p>
+                {mergedHint ? <p className="mt-1 text-sm font-medium text-forest">{sessionTablesLabel(group, { compact: true })}</p> : null}
                 <p className="mt-1 text-xs text-muted">
                   Started {formatClock(session.started_at)}
                   {elapsedLabel(session.started_at) ? ` · ${elapsedLabel(session.started_at)}` : ''}
@@ -513,6 +543,16 @@ function TableDetailDrawer({
         </div>
 
         <div className="mt-6 flex flex-wrap gap-2">
+          {session ? (
+            <>
+              <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => onMerge(table)}>
+                Merge Tables
+              </Button>
+              <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => onTransfer(table)}>
+                Transfer Table
+              </Button>
+            </>
+          ) : null}
           <Button variant="secondary" className="h-9 px-3 py-0 text-[13px]" onClick={() => onEdit(table)}>
             Edit Table
           </Button>
@@ -569,6 +609,9 @@ export default function Tables() {
   const [assignFilter, setAssignFilter] = useState('all')
   const [sortKey, setSortKey] = useState('number')
   const [menuId, setMenuId] = useState('')
+  const [moveMode, setMoveMode] = useState('')
+  const [moveTableId, setMoveTableId] = useState('')
+  const [moveBusy, setMoveBusy] = useState(false)
 
   async function load() {
     if (!restaurant) {
@@ -616,6 +659,8 @@ export default function Tables() {
     setAssignFilter('all')
     setSortKey('number')
     setMenuId('')
+    setMoveMode('')
+    setMoveTableId('')
     setReady(false)
     load()
   }, [restaurant?.id])
@@ -760,6 +805,58 @@ export default function Tables() {
     navigate('/dashboard/table-wise/waiters')
   }
 
+  function openMerge(table) {
+    setMenuId('')
+    setSelected(null)
+    setMoveTableId(table?.id || '')
+    setMoveMode('merge')
+  }
+
+  function openTransfer(table) {
+    setMenuId('')
+    setSelected(null)
+    setMoveTableId(table?.id || '')
+    setMoveMode('transfer')
+  }
+
+  async function onMergeConfirm(payload) {
+    if (moveBusy) return
+    setMoveBusy(true)
+    setError('')
+    const { data, error: nextError } = await mergeTableSessions({
+      restaurantId: restaurant.id,
+      ...payload,
+    })
+    setMoveBusy(false)
+    if (nextError || !data) {
+      setError(nextError?.message || 'Unable to merge these tables. Please try again.')
+      return
+    }
+    setMoveMode('')
+    setMoveTableId('')
+    setNotice('Tables merged into one session.')
+    load()
+  }
+
+  async function onTransferConfirm(payload) {
+    if (moveBusy) return
+    setMoveBusy(true)
+    setError('')
+    const { data, error: nextError } = await transferTableSession({
+      restaurantId: restaurant.id,
+      ...payload,
+    })
+    setMoveBusy(false)
+    if (nextError || !data) {
+      setError(nextError?.message || 'Unable to transfer this table. Please try again.')
+      return
+    }
+    setMoveMode('')
+    setMoveTableId('')
+    setNotice('Session transferred. The original session ID is unchanged.')
+    load()
+  }
+
   async function onSave(event) {
     event.preventDefault()
     if (!form.table_number.trim()) {
@@ -898,6 +995,12 @@ export default function Tables() {
           <Link to="/dashboard/table-wise/waiters">
             <Button variant="secondary">Manage Assignments</Button>
           </Link>
+          <Button variant="secondary" onClick={() => openMerge(null)}>
+            Merge Tables
+          </Button>
+          <Button variant="secondary" onClick={() => openTransfer(null)}>
+            Transfer Table
+          </Button>
           <Button onClick={openAdd}>
             <NavIcon name="plus" className="h-4 w-4" />
             Add Table
@@ -992,6 +1095,7 @@ export default function Tables() {
                       table={item}
                       waiter={waiterByTable.get(item.id)}
                       session={session}
+                      sessionTables={session ? tablesForSession(items, session) : []}
                       totals={session ? amountsBySession.get(session.id) : null}
                       menuOpen={menuId === item.id}
                       onOpen={setSelected}
@@ -1005,6 +1109,8 @@ export default function Tables() {
                       onCopy={copyLink}
                       onToggle={toggleActive}
                       onRemove={remove}
+                      onMerge={openMerge}
+                      onTransfer={openTransfer}
                     />
                   )
                 })}
@@ -1049,6 +1155,7 @@ export default function Tables() {
         table={selectedLive}
         waiter={selectedLive ? waiterByTable.get(selectedLive.id) : null}
         session={selectedSession}
+        sessionTables={selectedSession ? tablesForSession(items, selectedSession) : []}
         totals={selectedSession ? amountsBySession.get(selectedSession.id) : null}
         restaurant={restaurant}
         onClose={() => setSelected(null)}
@@ -1059,7 +1166,37 @@ export default function Tables() {
         onCopy={copyLink}
         onToggle={toggleActive}
         onRemove={remove}
+        onMerge={openMerge}
+        onTransfer={openTransfer}
         busy={qrBusy}
+      />
+      <MergeTablesDialog
+        open={moveMode === 'merge'}
+        restaurantId={restaurant.id}
+        tables={items}
+        sessions={sessions}
+        orders={orders}
+        startTableId={moveTableId}
+        busy={moveBusy}
+        onClose={() => {
+          if (moveBusy) return
+          setMoveMode('')
+        }}
+        onConfirm={onMergeConfirm}
+      />
+      <TransferTableDialog
+        open={moveMode === 'transfer'}
+        restaurantId={restaurant.id}
+        tables={items}
+        sessions={sessions}
+        orders={orders}
+        startTableId={moveTableId}
+        busy={moveBusy}
+        onClose={() => {
+          if (moveBusy) return
+          setMoveMode('')
+        }}
+        onConfirm={onTransferConfirm}
       />
     </div>
   )

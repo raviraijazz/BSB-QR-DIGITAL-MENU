@@ -49,6 +49,23 @@ export function tableForSession(tables, session) {
   return list.find((item) => linked.some((row) => row.table_id === item.id)) || null
 }
 
+async function withSessionTableLabels(restaurantId, sessions) {
+  const rows = sessions || []
+  if (!restaurantId || !rows.length) return rows
+  const { data, error } = await supabase.rpc('list_session_table_labels', { p_restaurant_id: restaurantId })
+  if (error || !Array.isArray(data)) return rows
+  const map = Object.fromEntries(data.map((row) => [row.session_id, row.tables || []]))
+  return rows.map((session) => {
+    const labeled = map[session.id]
+    if (!labeled?.length) return session
+    return {
+      ...session,
+      labeled_tables: labeled,
+      session_tables: labeled.map((table) => ({ table_id: table.id })),
+    }
+  })
+}
+
 export async function listOpenSessions(restaurantId) {
   if (!restaurantId) return { data: [], error: null }
   let { data, error } = await supabase
@@ -67,7 +84,8 @@ export async function listOpenSessions(restaurantId) {
     data = fallback.data
     error = fallback.error
   }
-  return { data: data ?? [], error: friendlySessionError(error) }
+  if (error) return { data: data ?? [], error: friendlySessionError(error) }
+  return { data: await withSessionTableLabels(restaurantId, data ?? []), error: null }
 }
 
 export async function getSession(sessionId, restaurantId) {
@@ -88,7 +106,9 @@ export async function getSession(sessionId, restaurantId) {
     data = fallback.data
     error = fallback.error
   }
-  return { data, error: friendlySessionError(error) }
+  if (error) return { data, error: friendlySessionError(error) }
+  const [labeled] = await withSessionTableLabels(restaurantId, data ? [data] : [])
+  return { data: labeled || data, error: null }
 }
 
 export async function openTableSession(restaurantId, table) {

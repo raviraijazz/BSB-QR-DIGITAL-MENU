@@ -50,10 +50,37 @@ export function formatBillMoney(value) {
 
 export function billStatusLabel(status) {
   const value = String(status || 'open')
-  if (value === 'payment_pending') return 'Payment pending'
+  if (value === 'payment_pending') return 'Partially paid'
   if (value === 'paid') return 'Settled'
   if (value === 'cancelled') return 'Void'
   return 'Open'
+}
+
+export const PAYMENT_METHODS = [
+  { id: 'cash', label: 'Cash' },
+  { id: 'upi', label: 'UPI' },
+  { id: 'card', label: 'Card' },
+]
+
+export function paymentMethodLabel(value) {
+  const method = String(value || '').toLowerCase()
+  if (method === 'upi') return 'UPI'
+  if (method === 'card') return 'Card'
+  if (method === 'cash') return 'Cash'
+  return 'Payment'
+}
+
+export function paymentsTotal(payments) {
+  return moneyRound((payments || []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0))
+}
+
+export function remainingBalance(payable, payments) {
+  return moneyRound(Math.max(0, moneyRound(payable) - paymentsTotal(payments)))
+}
+
+export function newPaymentRequestId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  return `pay-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
 export function applyBillDiscount(subtotal, discountType, discountValue) {

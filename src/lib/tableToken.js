@@ -39,6 +39,51 @@ export function tableHeading(table) {
   return numberLabel || name || 'Table'
 }
 
+function tableSortValue(table) {
+  const n = Number.parseInt(String(table?.table_number || table?.name || ''), 10)
+  return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY
+}
+
+export function sortTables(tables) {
+  return (tables || []).slice().sort((a, b) => {
+    const diff = tableSortValue(a) - tableSortValue(b)
+    if (diff) return diff
+    return tableHeading(a).localeCompare(tableHeading(b))
+  })
+}
+
+export function uniqueTables(tables) {
+  const seen = new Set()
+  const rows = []
+  for (const table of tables || []) {
+    if (!table?.id || seen.has(table.id)) continue
+    seen.add(table.id)
+    rows.push(table)
+  }
+  return sortTables(rows)
+}
+
+export function compactTableLabel(table) {
+  if (!table) return ''
+  const number = sanitizeTableNumber(table.table_number)
+  if (number) return /^table(\s|$)/i.test(number) ? number.replace(/^table\s*/i, '') || number : number
+  return sanitizeTableName(table.name) || 'Table'
+}
+
+export function sessionTablesLabel(tables, { compact = false } = {}) {
+  const rows = uniqueTables(tables)
+  if (!rows.length) return compact ? 'Table' : 'Table'
+  if (rows.length === 1) return tableHeading(rows[0])
+  if (compact) return `Tables ${rows.map((table) => compactTableLabel(table)).join(' + ')}`
+  return rows.map((table) => tableHeading(table)).join(', ')
+}
+
+export function mergedTablesHint(tables) {
+  const count = uniqueTables(tables).length
+  if (count < 2) return ''
+  return `Merged: ${count} tables`
+}
+
 export function nextTableNumber(tables) {
   const used = new Set(
     (tables || [])

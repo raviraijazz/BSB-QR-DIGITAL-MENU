@@ -6,7 +6,7 @@ export const TABLE_WISE_MODULES = [
     to: '/dashboard/table-wise/tables',
     label: 'Floor / Tables',
     icon: 'tables',
-    lines: ['Manage restaurant tables', 'View table status', 'Open table operations'],
+    lines: ['Manage restaurant tables', 'Merge or transfer sessions', 'View table status'],
     ready: true,
   },
   {
@@ -38,10 +38,8 @@ export const TABLE_WISE_MODULES = [
     to: '/dashboard/table-wise/collections',
     label: 'Collections',
     icon: 'collections',
-    lines: ['View settled payments and collections'],
-    ready: false,
-    title: 'Collections',
-    body: 'Settled payments and date-wise collections will appear here once billing and payments are enabled.',
+    lines: ['Daily collection report', 'Cash, UPI and card breakdown', 'Settled and outstanding bills'],
+    ready: true,
   },
   {
     key: 'waiters',

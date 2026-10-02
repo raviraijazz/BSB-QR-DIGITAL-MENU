@@ -4,7 +4,7 @@ import { firstRelated } from '../lib/orderCart'
 const KOT_SELECT = 'id, restaurant_id, session_id, order_id, kot_number, kot_type, status, printed_at, created_at'
 const KOT_ITEM_SELECT = 'id, kot_id, order_item_id, item_name, quantity, notes, created_at'
 const ORDER_SELECT = 'id, restaurant_id, session_id, waiter_id, source_table_id, order_number, status, notes, created_at, updated_at'
-const KITCHEN_SELECT = `${KOT_SELECT}, kot_items(${KOT_ITEM_SELECT}), orders(${ORDER_SELECT}, waiters(full_name, waiter_id), table_sessions(session_number, status, primary_table_id))`
+const KITCHEN_SELECT = `${KOT_SELECT}, kot_items(${KOT_ITEM_SELECT}), orders(${ORDER_SELECT}, waiters(full_name, waiter_id), table_sessions(session_number, status, primary_table_id, session_tables(table_id)))`
 
 const FORWARD_STATUS = { new: 'preparing', preparing: 'ready' }
 
@@ -36,15 +36,22 @@ export async function listRestaurantKots(restaurantId) {
       .in('status', ['new', 'preparing', 'ready'])
       .order('created_at', { ascending: true })
     if (error) {
+      const nested = await supabase
+        .from('kots')
+        .select(`${KOT_SELECT}, kot_items(${KOT_ITEM_SELECT}), orders(${ORDER_SELECT}, waiters(full_name, waiter_id), table_sessions(session_number, status, primary_table_id))`)
+        .eq('restaurant_id', restaurantId)
+        .in('status', ['new', 'preparing', 'ready'])
+        .order('created_at', { ascending: true })
+      if (!nested.error) return { data: nested.data ?? [], error: null }
       const fallback = await supabase
         .from('kots')
         .select(`${KOT_SELECT}, kot_items(${KOT_ITEM_SELECT})`)
         .eq('restaurant_id', restaurantId)
         .in('status', ['new', 'preparing', 'ready'])
         .order('created_at', { ascending: true })
-    if (fallback.error) return { data: [], error: friendlyKotError(error) }
-    return { data: fallback.data ?? [], error: null }
-  }
+      if (fallback.error) return { data: [], error: friendlyKotError(error) }
+      return { data: fallback.data ?? [], error: null }
+    }
   return { data: data ?? [], error: null }
 }
 

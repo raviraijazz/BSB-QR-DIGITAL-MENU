@@ -7,7 +7,8 @@ import Field, { inputClass } from '../../components/Field'
 import FoodTypeMark from '../../components/FoodTypeMark'
 import Spinner from '../../components/Spinner'
 import { cartTotals, formatMoney, isOpenSession, itemIsSoldOut, orderableVariants } from '../../lib/orderCart'
-import { tableHeading } from '../../lib/tableToken'
+import { sessionTablesLabel, tableHeading } from '../../lib/tableToken'
+import { tablesForSession } from '../../services/tableMoves'
 import { normalizeFoodType } from '../../lib/foodType'
 import { listCategories } from '../../services/categories'
 import { listMenuItems } from '../../services/menuItems'
@@ -46,6 +47,7 @@ function QtyControl({ value, onChange }) {
 
 function CartPanel({
   table,
+  tableLabel,
   session,
   lines,
   notes,
@@ -63,7 +65,7 @@ function CartPanel({
     <div className="flex h-full min-h-0 flex-col rounded-2xl border border-line bg-card p-4">
       <div className="mb-3">
         <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Cart</p>
-        <p className="mt-1 font-display text-xl leading-tight">{table ? tableHeading(table) : 'Table'}</p>
+        <p className="mt-1 font-display text-xl leading-tight">{tableLabel || (table ? tableHeading(table) : 'Table')}</p>
         <p className="text-xs text-muted">{session?.session_number || 'Session'} · new order only</p>
       </div>
       {lines.length === 0 ? (
@@ -197,6 +199,8 @@ export default function WaiterOrder() {
   const [busy, setBusy] = useState(false)
 
   const table = useMemo(() => tableForSession(tables, session), [tables, session])
+  const group = useMemo(() => tablesForSession(tables, session), [tables, session])
+  const tableLabel = group.length > 1 ? sessionTablesLabel(group, { compact: true }) : table ? tableHeading(table) : 'Table'
 
   useEffect(() => {
     let active = true
@@ -259,7 +263,8 @@ export default function WaiterOrder() {
       setError('This table session is no longer active.')
       return
     }
-    if (!table) {
+    const orderTable = table || group[0]
+    if (!orderTable) {
       setError('You are not assigned to this table.')
       return
     }
@@ -269,7 +274,7 @@ export default function WaiterOrder() {
       restaurantId: restaurant.id,
       session,
       waiter,
-      table,
+      table: orderTable,
       lines,
       notes,
     })
@@ -301,6 +306,7 @@ export default function WaiterOrder() {
   const open = isOpenSession(session)
   const cartProps = {
     table,
+    tableLabel,
     session,
     lines,
     notes,
@@ -321,7 +327,7 @@ export default function WaiterOrder() {
           to={`/waiter/sessions/${session.id}`}
           className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted hover:text-ink"
         >
-          {table ? tableHeading(table) : 'Session'} · {session.session_number}
+          {tableLabel} · {session.session_number}
         </Link>
         <h1 className="mt-1 font-display text-3xl">{step === 'review' ? 'Review Order' : 'Add Order'}</h1>
         <p className="mt-1 text-sm text-muted">

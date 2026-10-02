@@ -15,9 +15,14 @@ import {
   formatClock,
   formatQty,
   isOpenSession,
+  moneyRound,
+  newPaymentRequestId,
+  PAYMENT_METHODS,
+  paymentMethodLabel,
 } from '../../../lib/orderCart'
+import { MergeTablesDialog, TransferTableDialog } from '../../../components/TableMoveDialogs'
 import { TABLE_WISE_HOME } from '../../../lib/tableWiseNav'
-import { tableHeading } from '../../../lib/tableToken'
+import { sessionTablesLabel, tableHeading } from '../../../lib/tableToken'
 import {
   ensureSessionBill,
   listRestaurantBills,
@@ -26,6 +31,8 @@ import {
   sessionWaiterFromOrders,
   waiterLabel,
 } from '../../../services/bills'
+import { collectBillPayment, listRestaurantPayments, paymentBalance } from '../../../services/payments'
+import { mergeTableSessions, tablesForSession, transferTableSession } from '../../../services/tableMoves'
 import { listTables } from '../../../services/tables'
 import { listOpenSessions } from '../../../services/tableSessions'
 import { listRestaurantOrders, orderSubtotal } from '../../../services/waiterOrders'
@@ -43,7 +50,129 @@ function ordersForSession(orders, sessionId) {
   return (orders || []).filter((order) => order.session_id === sessionId && order.status !== 'cancelled')
 }
 
-function BillDetail({ view, working, notice, error, onClose, onRefresh, onSave }) {
+function PaymentHistory({ payments, payable }) {
+  const rows = payments || []
+  const balance = paymentBalance(payable, rows)
+  if (!rows.length) {
+    return (
+      <div className="rounded-2xl border border-line bg-white px-4 py-3 text-sm">
+        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Payment history</p>
+        <p className="mt-2 text-muted">No payments yet</p>
+      </div>
+    )
+  }
+  return (
+    <div className="rounded-2xl border border-line bg-white px-4 py-3 text-sm">
+      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Payment history</p>
+      <ul className="mt-3 space-y-2">
+        {rows.map((row) => (
+          <li key={row.id} className="flex items-start justify-between gap-3">
+            <span>
+              <span className="font-medium">{paymentMethodLabel(row.payment_method)}</span>
+              {row.payment_reference ? <span className="mt-0.5 block text-xs text-muted">{row.payment_reference}</span> : null}
+              <span className="mt-0.5 block text-xs text-muted">{formatClock(row.paid_at || row.created_at)}</span>
+            </span>
+            <span className="shrink-0 tabular-nums">{formatBillMoney(row.amount)}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 flex justify-between border-t border-line pt-3 font-medium">
+        <span>Total paid</span>
+        <span className="tabular-nums">{formatBillMoney(balance.paid)}</span>
+      </div>
+      <div className="mt-1 flex justify-between text-muted">
+        <span>Remaining</span>
+        <span className="tabular-nums">{formatBillMoney(balance.remaining)}</span>
+      </div>
+    </div>
+  )
+}
+
+function CollectPaymentForm({ remaining, working, error, onCancel, onSubmit }) {
+  const [method, setMethod] = useState('cash')
+  const [amount, setAmount] = useState(remaining ? String(remaining) : '')
+  const [reference, setReference] = useState('')
+
+  useEffect(() => {
+    setAmount(remaining ? String(remaining) : '')
+  }, [remaining])
+
+  function submit(event) {
+    event.preventDefault()
+    const numeric = moneyRound(amount)
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      onSubmit({ error: 'Enter a payment amount.' })
+      return
+    }
+    if (numeric > remaining + 0.001) {
+      onSubmit({ error: 'Payment cannot exceed remaining balance.' })
+      return
+    }
+    onSubmit({
+      method,
+      amount: numeric,
+      reference: method === 'cash' ? '' : String(reference || '').trim(),
+    })
+  }
+
+  return (
+    <form className="rounded-2xl border border-line bg-white px-4 py-3" onSubmit={submit}>
+      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Collect payment</p>
+      <p className="mt-2 font-display text-3xl tabular-nums leading-none">{formatBillMoney(remaining)}</p>
+      <p className="mt-1 text-xs text-muted">Amount due</p>
+      <div className="mt-3 flex gap-1.5" role="group" aria-label="Payment method">
+        {PAYMENT_METHODS.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => setMethod(option.id)}
+            className={`rounded-full px-3 py-1.5 text-[12px] font-medium ${
+              method === option.id ? 'bg-forest text-[#f5ead8]' : 'bg-paper text-muted'
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <div className="mt-3">
+        <Field label="Amount">
+          <input
+            className={inputClass}
+            type="number"
+            min="0.01"
+            step="0.01"
+            max={remaining}
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+          />
+        </Field>
+      </div>
+      {method !== 'cash' ? (
+        <div className="mt-3">
+          <Field label="Reference / Transaction ID" hint="Optional">
+            <input
+              className={inputClass}
+              value={reference}
+              onChange={(event) => setReference(event.target.value)}
+              placeholder={method === 'upi' ? 'UPI ref' : 'Card ref'}
+            />
+          </Field>
+        </div>
+      ) : null}
+      <Alert>{error}</Alert>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button type="submit" disabled={working || remaining <= 0}>
+          {working ? 'Recording...' : 'Add Payment'}
+        </Button>
+        <Button type="button" variant="secondary" disabled={working} onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function BillDetail({ view, payments, working, collecting, notice, error, payError, onClose, onRefresh, onSave, onCollect, onStartPay, onCancelPay, paying }) {
   const [discountType, setDiscountType] = useState(view.discountType || 'percent')
   const [discountValue, setDiscountValue] = useState(view.discountValue ? String(view.discountValue) : '')
 
@@ -63,6 +192,10 @@ function BillDetail({ view, working, notice, error, onClose, onRefresh, onSave }
   const preview = applyBillDiscount(view.subtotal, discountType, discountValue)
   const waiter = waiterLabel(view.waiter)
   const emptyOrders = view.orderCount === 0
+  const billPayments = payments || []
+  const balance = paymentBalance(preview.payable, billPayments)
+  const hasPayments = billPayments.length > 0
+  const canDiscount = !hasPayments && view.status === 'open'
 
   function submit(event) {
     event?.preventDefault?.()
@@ -84,7 +217,13 @@ function BillDetail({ view, working, notice, error, onClose, onRefresh, onSave }
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Running bill</p>
-          <h2 className="mt-1 font-display text-2xl">{view.table ? tableHeading(view.table) : 'Table'}</h2>
+          <h2 className="mt-1 font-display text-2xl">
+            {view.sessionTables?.length
+              ? sessionTablesLabel(view.sessionTables, { compact: true })
+              : view.table
+                ? tableHeading(view.table)
+                : 'Table'}
+          </h2>
           <p className="mt-1 text-sm text-muted">
             {view.session?.session_number || 'Session'}
             {view.bill?.bill_number ? ` · ${view.bill.bill_number}` : ''}
@@ -158,7 +297,37 @@ function BillDetail({ view, working, notice, error, onClose, onRefresh, onSave }
             <span>Payable</span>
             <span className="tabular-nums">{formatBillMoney(preview.payable)}</span>
           </div>
+          <div className="mt-2 flex justify-between gap-3 text-sm">
+            <span className="text-muted">Paid</span>
+            <span className="tabular-nums">{formatBillMoney(balance.paid)}</span>
+          </div>
+          <div className="mt-1 flex justify-between gap-3 text-sm font-medium">
+            <span>Remaining</span>
+            <span className="tabular-nums">{formatBillMoney(balance.remaining)}</span>
+          </div>
         </div>
+
+        <PaymentHistory payments={billPayments} payable={preview.payable} />
+
+        {paying ? (
+          <CollectPaymentForm
+            remaining={balance.remaining}
+            working={collecting}
+            error={payError}
+            onCancel={onCancelPay}
+            onSubmit={onCollect}
+          />
+        ) : balance.remaining > 0 ? (
+          <Button className="w-full" disabled={working || emptyOrders} onClick={onStartPay}>
+            {hasPayments ? 'Add Another Payment' : 'Collect Payment'}
+          </Button>
+        ) : view.status !== 'paid' ? (
+          <Button className="w-full" disabled={working || collecting} onClick={() => onCollect({ settle: true })}>
+            {collecting ? 'Settling...' : 'Settle Bill'}
+          </Button>
+        ) : (
+          <p className="rounded-xl bg-forest/10 px-3 py-2 text-center text-sm font-medium text-forest">Bill settled</p>
+        )}
 
         <form className="rounded-2xl border border-line bg-white px-4 py-3" onSubmit={submit}>
           <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Discount</p>
@@ -170,6 +339,7 @@ function BillDetail({ view, working, notice, error, onClose, onRefresh, onSave }
               <button
                 key={option.id}
                 type="button"
+                disabled={!canDiscount}
                 onClick={() => setDiscountType(option.id)}
                 className={`rounded-full px-3 py-1.5 text-[12px] font-medium ${
                   discountType === option.id ? 'bg-forest text-[#f5ead8]' : 'bg-paper text-muted'
@@ -182,7 +352,11 @@ function BillDetail({ view, working, notice, error, onClose, onRefresh, onSave }
           <div className="mt-3">
             <Field
               label={discountType === 'amount' ? 'Discount amount' : 'Discount percent'}
-              hint={preview.warning || (discountType === 'percent' ? '0 to 100' : 'Cannot exceed subtotal')}
+              hint={
+                canDiscount
+                  ? preview.warning || (discountType === 'percent' ? '0 to 100' : 'Cannot exceed subtotal')
+                  : 'Discount cannot change after a payment is recorded.'
+              }
               error=""
             >
               <input
@@ -194,6 +368,7 @@ function BillDetail({ view, working, notice, error, onClose, onRefresh, onSave }
                 value={discountValue}
                 onChange={(event) => setDiscountValue(event.target.value)}
                 placeholder={discountType === 'percent' ? '10' : '200'}
+                disabled={!canDiscount}
               />
             </Field>
           </div>
@@ -201,7 +376,7 @@ function BillDetail({ view, working, notice, error, onClose, onRefresh, onSave }
             Calculated discount {preview.discountAmount ? formatBillMoney(preview.discountAmount) : 'None'}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button type="submit" disabled={working || emptyOrders}>
+            <Button type="submit" disabled={working || emptyOrders || !canDiscount}>
               {working ? 'Saving...' : 'Save Discount'}
             </Button>
             <Button type="button" variant="secondary" disabled={working} onClick={onRefresh}>
@@ -217,9 +392,15 @@ function BillDetail({ view, working, notice, error, onClose, onRefresh, onSave }
             <p className="text-[11px] uppercase tracking-[0.12em] text-muted">Payable</p>
             <p className="font-display text-2xl leading-none">{formatBillMoney(preview.payable)}</p>
           </div>
-          <Button disabled={working || emptyOrders} onClick={submit}>
-            {working ? 'Saving...' : 'Save Discount'}
-          </Button>
+          {balance.remaining > 0 && !paying ? (
+            <Button disabled={working || emptyOrders} onClick={onStartPay}>
+              {hasPayments ? 'Add Payment' : 'Collect Payment'}
+            </Button>
+          ) : (
+            <Button disabled={working || emptyOrders || !canDiscount} onClick={submit}>
+              {working ? 'Saving...' : 'Save Discount'}
+            </Button>
+          )}
         </div>
       </div>
     </div>
@@ -231,17 +412,25 @@ export default function RunningBills() {
   const [sessions, setSessions] = useState([])
   const [orders, setOrders] = useState([])
   const [bills, setBills] = useState([])
+  const [payments, setPayments] = useState([])
   const [tables, setTables] = useState([])
   const [waiters, setWaiters] = useState([])
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [payError, setPayError] = useState('')
   const [busy, setBusy] = useState(true)
   const [working, setWorking] = useState(false)
+  const [collecting, setCollecting] = useState(false)
+  const [paying, setPaying] = useState(false)
+  const [success, setSuccess] = useState(null)
   const [filter, setFilter] = useState('all')
   const [waiterFilter, setWaiterFilter] = useState('')
   const [tableFilter, setTableFilter] = useState('')
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState('')
+  const [moveMode, setMoveMode] = useState('')
+  const [moveTableId, setMoveTableId] = useState('')
+  const [moveBusy, setMoveBusy] = useState(false)
 
   const restaurantId = restaurant?.id
 
@@ -250,18 +439,20 @@ export default function RunningBills() {
       setSessions([])
       setOrders([])
       setBills([])
+      setPayments([])
       setTables([])
       setWaiters([])
       setBusy(false)
       return
     }
     if (!silent) setBusy(true)
-    const [nextSessions, nextOrders, nextBills, nextTables, nextWaiters] = await Promise.all([
+    const [nextSessions, nextOrders, nextBills, nextTables, nextWaiters, nextPayments] = await Promise.all([
       listOpenSessions(restaurantId),
       listRestaurantOrders(restaurantId),
       listRestaurantBills(restaurantId),
       listTables(restaurantId),
       listWaiters(restaurantId),
+      listRestaurantPayments(restaurantId),
     ])
     const openSessions = nextSessions.data ?? []
     const allOrders = nextOrders.data ?? []
@@ -272,6 +463,7 @@ export default function RunningBills() {
       nextBills.error?.message ||
       nextTables.error?.message ||
       nextWaiters.error?.message ||
+      nextPayments.error?.message ||
       ''
 
     if (!loadError) {
@@ -292,6 +484,7 @@ export default function RunningBills() {
     setSessions(openSessions)
     setOrders(allOrders)
     setBills(nextBillRows)
+    setPayments(nextPayments.data ?? [])
     setTables(nextTables.data ?? [])
     setWaiters(nextWaiters.data ?? [])
     if (loadError) setError(loadError)
@@ -309,6 +502,15 @@ export default function RunningBills() {
   const tableById = useMemo(() => Object.fromEntries((tables || []).map((table) => [table.id, table])), [tables])
   const waitersById = useMemo(() => Object.fromEntries((waiters || []).map((waiter) => [waiter.id, waiter])), [waiters])
   const billsBySession = useMemo(() => Object.fromEntries((bills || []).map((bill) => [bill.session_id, bill])), [bills])
+  const paymentsByBill = useMemo(() => {
+    const map = {}
+    for (const row of payments || []) {
+      if (!row?.bill_id) continue
+      if (!map[row.bill_id]) map[row.bill_id] = []
+      map[row.bill_id].push(row)
+    }
+    return map
+  }, [payments])
 
   const rows = useMemo(() => {
     return (sessions || [])
@@ -316,11 +518,15 @@ export default function RunningBills() {
       .map((session) => {
         const sessionOrders = ordersForSession(orders, session.id)
         const waiter = sessionWaiterFromOrders(sessionOrders, waitersById)
-        const table = tableById[session.primary_table_id] || null
-        return runningBillView(session, sessionOrders, billsBySession[session.id] || null, table, waiter)
+        const sessionTables = tablesForSession(tables, session)
+        const table = sessionTables[0] || tableById[session.primary_table_id] || null
+        const view = runningBillView(session, sessionOrders, billsBySession[session.id] || null, table, waiter)
+        const billPayments = view.bill?.id ? paymentsByBill[view.bill.id] || [] : []
+        const balance = paymentBalance(view.payable, billPayments)
+        return { ...view, sessionTables, payments: billPayments, paid: balance.paid, remaining: balance.remaining }
       })
       .filter((row) => row.orderCount > 0)
-  }, [sessions, orders, billsBySession, tableById, waitersById])
+  }, [sessions, orders, billsBySession, tableById, waitersById, paymentsByBill])
 
   const waiterOptions = useMemo(() => {
     const map = new Map()
@@ -333,12 +539,13 @@ export default function RunningBills() {
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase()
     return rows.filter((row) => {
-      if (filter === 'open' && row.status !== 'open') return false
-      if (filter === 'high' && row.payable < HIGH_VALUE) return false
+      if (filter === 'open' && row.status === 'paid') return false
+      if (filter === 'high' && row.remaining < HIGH_VALUE) return false
       if (waiterFilter && row.waiter?.id !== waiterFilter) return false
-      if (tableFilter && row.table?.id !== tableFilter) return false
+      if (tableFilter && !(row.sessionTables || []).some((table) => table.id === tableFilter) && row.table?.id !== tableFilter) return false
       if (!needle) return true
       const hay = [
+        sessionTablesLabel(row.sessionTables || [row.table].filter(Boolean)),
         tableHeading(row.table),
         row.session?.session_number,
         row.bill?.bill_number,
@@ -355,7 +562,7 @@ export default function RunningBills() {
   const metrics = useMemo(() => {
     const gross = rows.reduce((sum, row) => sum + row.subtotal, 0)
     const discounts = rows.reduce((sum, row) => sum + row.discountAmount, 0)
-    const outstanding = rows.reduce((sum, row) => sum + row.payable, 0)
+    const outstanding = rows.reduce((sum, row) => sum + row.remaining, 0)
     return [
       { id: 'open', label: 'Open Sessions', value: String(rows.length) },
       { id: 'gross', label: 'Gross Sales', value: formatBillMoney(gross) },
@@ -365,6 +572,74 @@ export default function RunningBills() {
   }, [rows])
 
   const selected = useMemo(() => rows.find((row) => row.session.id === selectedId) || null, [rows, selectedId])
+
+  function closeBill() {
+    setSelectedId('')
+    setNotice('')
+    setPayError('')
+    setPaying(false)
+    setSuccess(null)
+  }
+
+  async function onCollectPayment(payload) {
+    if (!selected || !restaurantId) return
+    if (payload?.error) {
+      setPayError(payload.error)
+      return
+    }
+    setCollecting(true)
+    setPayError('')
+    setError('')
+    let bill = selected.bill
+    if (!bill) {
+      const created = await ensureSessionBill(restaurantId, selected.session, selected.orders, bills)
+      if (created.error || !created.data) {
+        setCollecting(false)
+        setPayError(created.error?.message || 'Unable to open this running bill. Please try again.')
+        return
+      }
+      bill = created.data
+      setBills((current) => current.filter((row) => row.session_id !== bill.session_id).concat(bill))
+    }
+    const { data, error: collectError } = await collectBillPayment({
+      restaurantId,
+      billId: bill.id,
+      amount: payload.settle ? 0 : payload.amount,
+      method: payload.settle ? 'cash' : payload.method,
+      reference: payload.settle ? '' : payload.reference,
+      requestId: payload.settle ? null : newPaymentRequestId(),
+    })
+    setCollecting(false)
+    if (collectError || !data) {
+      setPayError(collectError?.message || 'Unable to record payment. Please try again.')
+      load(true)
+      return
+    }
+    if (data.bill) {
+      setBills((current) => current.map((row) => (row.id === data.bill.id ? { ...row, ...data.bill } : row)))
+    }
+    if (data.payment?.id) {
+      setPayments((current) => {
+        if (current.some((row) => row.id === data.payment.id)) return current
+        return [...current, data.payment]
+      })
+    }
+    setPaying(false)
+    if (data.settled) {
+      const methodRows = (selected.payments || []).concat(data.payment?.id ? [data.payment] : [])
+      setSuccess({
+        table: selected.table,
+        session: selected.session,
+        payable: selected.payable,
+        payments: methodRows,
+      })
+      setSelectedId('')
+      load(true)
+      return
+    }
+    setNotice('Payment recorded.')
+    load(true)
+  }
 
   async function onSaveDiscount(discountType, discountValue) {
     if (!selected || !restaurantId) return
@@ -429,9 +704,17 @@ export default function RunningBills() {
           <h1 className="mt-1 font-display text-3xl">Running Bills</h1>
           <p className="mt-1 text-sm text-muted">{restaurant.name} · one open bill per active session</p>
         </div>
-        <Button variant="secondary" onClick={() => load()}>
-          Refresh
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => { setMoveTableId(selected?.table?.id || ''); setMoveMode('merge') }}>
+            Merge Tables
+          </Button>
+          <Button variant="secondary" onClick={() => { setMoveTableId(selected?.table?.id || ''); setMoveMode('transfer') }}>
+            Transfer Table
+          </Button>
+          <Button variant="secondary" onClick={() => load()}>
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -480,14 +763,11 @@ export default function RunningBills() {
           aria-label="By table"
         >
           <option value="">By Table</option>
-          {rows
-            .filter((row) => row.table?.id)
-            .filter((row, index, list) => list.findIndex((item) => item.table.id === row.table.id) === index)
-            .map((row) => (
-              <option key={row.table.id} value={row.table.id}>
-                {tableHeading(row.table)}
-              </option>
-            ))}
+          {tables.map((table) => (
+            <option key={table.id} value={table.id}>
+              {tableHeading(table)}
+            </option>
+          ))}
         </select>
         <input
           className={`${inputClass} lg:max-w-xs`}
@@ -524,7 +804,13 @@ export default function RunningBills() {
                     }`}
                   >
                     <div className="min-w-0">
-                      <p className="truncate font-medium">{row.table ? tableHeading(row.table) : 'Table'}</p>
+                      <p className="truncate font-medium">
+                        {row.sessionTables?.length
+                          ? sessionTablesLabel(row.sessionTables, { compact: true })
+                          : row.table
+                            ? tableHeading(row.table)
+                            : 'Table'}
+                      </p>
                       <p className="truncate text-xs text-muted">{row.session.session_number}</p>
                     </div>
                     <p className="truncate text-muted">{waiterLabel(row.waiter)}</p>
@@ -534,7 +820,10 @@ export default function RunningBills() {
                     </p>
                     <p className="tabular-nums">{formatBillMoney(row.subtotal)}</p>
                     <p className="tabular-nums">{row.discountAmount ? formatBillMoney(row.discountAmount) : 'None'}</p>
-                    <p className="font-medium tabular-nums">{formatBillMoney(row.payable)}</p>
+                    <p className="font-medium tabular-nums">
+                      {formatBillMoney(row.remaining)}
+                      {row.paid ? <span className="block text-[11px] font-normal text-muted">paid {formatBillMoney(row.paid)}</span> : null}
+                    </p>
                     <p className="text-xs text-muted">{formatClock(row.session.started_at)}</p>
                     <Button
                       variant="secondary"
@@ -557,7 +846,13 @@ export default function RunningBills() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="font-display text-xl">{row.table ? tableHeading(row.table) : 'Table'}</p>
+                        <p className="font-display text-xl">
+                          {row.sessionTables?.length
+                            ? sessionTablesLabel(row.sessionTables, { compact: true })
+                            : row.table
+                              ? tableHeading(row.table)
+                              : 'Table'}
+                        </p>
                         <p className="mt-1 text-sm text-muted">
                           {row.session.session_number} · {waiterLabel(row.waiter)}
                         </p>
@@ -571,9 +866,9 @@ export default function RunningBills() {
                     </p>
                     <div className="mt-3 flex items-end justify-between gap-3">
                       <p className="text-sm text-muted">
-                        {row.discountAmount ? `Discount ${formatBillMoney(row.discountAmount)}` : 'No discount'}
+                        {row.paid ? `Paid ${formatBillMoney(row.paid)}` : row.discountAmount ? `Discount ${formatBillMoney(row.discountAmount)}` : 'No discount'}
                       </p>
-                      <p className="font-display text-2xl leading-none">{formatBillMoney(row.payable)}</p>
+                      <p className="font-display text-2xl leading-none">{formatBillMoney(row.remaining)}</p>
                     </div>
                   </button>
                 ))}
@@ -586,21 +881,31 @@ export default function RunningBills() {
           {selected ? (
             <BillDetail
               view={selected}
+              payments={selected.payments}
               working={working}
+              collecting={collecting}
+              paying={paying}
               notice={notice}
               error={error}
-              onClose={() => {
-                setSelectedId('')
-                setNotice('')
-              }}
+              payError={payError}
+              onClose={closeBill}
               onRefresh={() => load()}
               onSave={onSaveDiscount}
+              onCollect={onCollectPayment}
+              onStartPay={() => {
+                setPaying(true)
+                setPayError('')
+              }}
+              onCancelPay={() => {
+                setPaying(false)
+                setPayError('')
+              }}
             />
           ) : (
             <div className="grid h-full place-items-center text-center">
               <div>
                 <p className="font-display text-xl">Select a bill</p>
-                <p className="mt-2 text-sm text-muted">Open a running bill to review orders and apply a discount.</p>
+                <p className="mt-2 text-sm text-muted">Open a running bill to review orders, apply a discount, and collect payment.</p>
               </div>
             </div>
           )}
@@ -613,24 +918,116 @@ export default function RunningBills() {
             type="button"
             className="absolute inset-0"
             aria-label="Close bill"
-            onClick={() => {
-              setSelectedId('')
-              setNotice('')
-            }}
+            onClick={closeBill}
           />
           <div className="relative z-10 flex h-full w-full max-w-md flex-col overflow-hidden border-l border-line bg-card p-5 shadow-lg">
             <BillDetail
               view={selected}
+              payments={selected.payments}
               working={working}
+              collecting={collecting}
+              paying={paying}
               notice={notice}
               error={error}
-              onClose={() => {
-                setSelectedId('')
-                setNotice('')
-              }}
+              payError={payError}
+              onClose={closeBill}
               onRefresh={() => load()}
               onSave={onSaveDiscount}
+              onCollect={onCollectPayment}
+              onStartPay={() => {
+                setPaying(true)
+                setPayError('')
+              }}
+              onCancelPay={() => {
+                setPaying(false)
+                setPayError('')
+              }}
             />
+          </div>
+        </div>
+      ) : null}
+
+      <MergeTablesDialog
+        open={moveMode === 'merge'}
+        restaurantId={restaurantId}
+        tables={tables}
+        sessions={sessions}
+        orders={orders}
+        startTableId={moveTableId}
+        busy={moveBusy}
+        onClose={() => {
+          if (moveBusy) return
+          setMoveMode('')
+        }}
+        onConfirm={async (payload) => {
+          if (moveBusy) return
+          setMoveBusy(true)
+          setError('')
+          const { data, error: nextError } = await mergeTableSessions({ restaurantId, ...payload })
+          setMoveBusy(false)
+          if (nextError || !data) {
+            setError(nextError?.message || 'Unable to merge these tables. Please try again.')
+            return
+          }
+          setMoveMode('')
+          setNotice('Tables merged into one session.')
+          load()
+        }}
+      />
+      <TransferTableDialog
+        open={moveMode === 'transfer'}
+        restaurantId={restaurantId}
+        tables={tables}
+        sessions={sessions}
+        orders={orders}
+        startTableId={moveTableId}
+        busy={moveBusy}
+        onClose={() => {
+          if (moveBusy) return
+          setMoveMode('')
+        }}
+        onConfirm={async (payload) => {
+          if (moveBusy) return
+          setMoveBusy(true)
+          setError('')
+          const { data, error: nextError } = await transferTableSession({ restaurantId, ...payload })
+          setMoveBusy(false)
+          if (nextError || !data) {
+            setError(nextError?.message || 'Unable to transfer this table. Please try again.')
+            return
+          }
+          setMoveMode('')
+          setNotice('Session transferred. The original session ID is unchanged.')
+          load()
+        }}
+      />
+
+      {success ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-md rounded-2xl border border-line bg-card p-6 shadow-lg">
+            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-forest">Payment successful</p>
+            <h2 className="mt-2 font-display text-3xl">{formatBillMoney(success.payable)}</h2>
+            <p className="mt-1 text-sm text-muted">
+              {success.table ? tableHeading(success.table) : 'Table'}
+              {success.session?.session_number ? ` · ${success.session.session_number}` : ''}
+            </p>
+            <ul className="mt-4 space-y-2 text-sm">
+              {(success.payments || []).map((row) => (
+                <li key={row.id || `${row.payment_method}-${row.amount}`} className="flex justify-between gap-3">
+                  <span>{paymentMethodLabel(row.payment_method)}</span>
+                  <span className="tabular-nums">{formatBillMoney(row.amount)}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-4 rounded-xl bg-forest/10 px-3 py-2 text-center text-sm font-medium text-forest">Session closed · table available</p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Link to="/dashboard/table-wise/tables">
+                <Button>Floor / Tables</Button>
+              </Link>
+              <Button variant="secondary" onClick={() => setSuccess(null)}>
+                Running Bills
+              </Button>
+            </div>
           </div>
         </div>
       ) : null}

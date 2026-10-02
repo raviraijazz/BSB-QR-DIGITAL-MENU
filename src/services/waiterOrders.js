@@ -86,7 +86,7 @@ export async function listRestaurantOrders(restaurantId) {
   const { data, error } = await supabase
     .from('orders')
     .select(
-      `${ORDER_WITH_KOT}, table_sessions(session_number, status, primary_table_id), waiters(full_name, waiter_id)`,
+      `${ORDER_WITH_KOT}, table_sessions(session_number, status, primary_table_id, session_tables(table_id)), waiters(full_name, waiter_id)`,
     )
     .eq('restaurant_id', restaurantId)
     .order('created_at', { ascending: false })
@@ -94,7 +94,7 @@ export async function listRestaurantOrders(restaurantId) {
     const fallback = await supabase
       .from('orders')
       .select(
-        `${ORDER_SELECT}, order_items(${ORDER_ITEM_SELECT}), table_sessions(session_number, status, primary_table_id), waiters(full_name, waiter_id)`,
+        `${ORDER_SELECT}, order_items(${ORDER_ITEM_SELECT}), table_sessions(session_number, status, primary_table_id, session_tables(table_id)), waiters(full_name, waiter_id)`,
       )
       .eq('restaurant_id', restaurantId)
       .order('created_at', { ascending: false })

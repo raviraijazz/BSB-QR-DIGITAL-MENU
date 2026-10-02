@@ -5,8 +5,9 @@ export function kotItems(kot) {
   return kot?.kot_items || []
 }
 
-export function printKot({ restaurant, kot, table, waiter, order }) {
+export function printKot({ restaurant, kot, table, tableLabel, waiter, order }) {
   if (!kot) return
+  const resolvedTable = tableLabel || (table ? tableHeading(table) : '—')
   const items = kotItems(kot)
   const lines = items
     .map((item) => {
@@ -30,7 +31,7 @@ export function printKot({ restaurant, kot, table, waiter, order }) {
 <body>
   <h1>BSB KITCHEN</h1>
   <p>KOT #${kot.kot_number || ''}</p>
-  <p>Table: ${table ? tableHeading(table) : '—'}</p>
+  <p>Table: ${resolvedTable}</p>
   <p>Waiter: ${waiter?.waiter_id || waiter?.full_name || '—'}</p>
   <p>Time: ${formatClock(kot.created_at)}</p>
   <p>Type: ${kotTypeLabel(kot.kot_type)}</p>

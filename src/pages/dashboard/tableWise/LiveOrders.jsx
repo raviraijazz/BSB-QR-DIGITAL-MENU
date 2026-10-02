@@ -7,7 +7,8 @@ import Spinner from '../../../components/Spinner'
 import { firstRelated, formatClock, formatMoney, formatQty, isOpenSession, kotStatusLabel, kotTypeLabel, orderStatusLabel } from '../../../lib/orderCart'
 import { printKot } from '../../../lib/kotPrint'
 import { TABLE_WISE_HOME } from '../../../lib/tableWiseNav'
-import { tableHeading } from '../../../lib/tableToken'
+import { sessionTablesLabel, tableHeading } from '../../../lib/tableToken'
+import { tablesForSession } from '../../../services/tableMoves'
 import { listTables } from '../../../services/tables'
 import { orderSubtotal, listRestaurantOrders } from '../../../services/waiterOrders'
 
@@ -119,7 +120,9 @@ export default function LiveOrders() {
           {visible.map((order) => {
             const items = order.order_items || []
             const session = orderSession(order)
-            const table = tableById[order.source_table_id] || tableById[session?.primary_table_id]
+            const group = tablesForSession(tables, session)
+            const table = tableById[order.source_table_id] || tableById[session?.primary_table_id] || group[0]
+            const tableLabel = group.length > 1 ? sessionTablesLabel(group, { compact: true }) : table ? tableHeading(table) : 'Table'
             const waiter = orderWaiter(order)
             const waiterLabel = waiter?.full_name && waiter?.waiter_id
               ? `${waiter.full_name} · ${waiter.waiter_id}`
@@ -131,7 +134,7 @@ export default function LiveOrders() {
                   <div className="min-w-0">
                     <p className="font-display text-xl">Order #{order.order_number}</p>
                     <p className="mt-0.5 text-sm text-muted">
-                      {table ? tableHeading(table) : 'Table'} · {session?.session_number || 'Session'} · {waiterLabel} · {items.length} {items.length === 1 ? 'item' : 'items'}
+                      {tableLabel} · {session?.session_number || 'Session'} · {waiterLabel} · {items.length} {items.length === 1 ? 'item' : 'items'}
                     </p>
                     <p className="text-xs text-muted">
                       {formatClock(order.created_at)}
@@ -164,7 +167,7 @@ export default function LiveOrders() {
                     <Button
                       variant="secondary"
                       className="!px-3 !py-1.5"
-                      onClick={() => printKot({ restaurant, kot, table, waiter, order })}
+                      onClick={() => printKot({ restaurant, kot, table, tableLabel, waiter, order })}
                     >
                       Print KOT
                     </Button>

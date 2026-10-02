@@ -17,8 +17,9 @@ import {
   kotTypeLabel,
 } from '../../../lib/orderCart'
 import { TABLE_WISE_HOME } from '../../../lib/tableWiseNav'
-import { tableHeading } from '../../../lib/tableToken'
+import { sessionTablesLabel, tableHeading } from '../../../lib/tableToken'
 import { listRestaurantKots, nextKotStatus, updateKotStatus } from '../../../services/kots'
+import { tablesForSession } from '../../../services/tableMoves'
 import { listTables } from '../../../services/tables'
 
 const COLUMNS = [
@@ -72,11 +73,11 @@ function cardAccent(kot, minutes) {
   return (COLUMNS.find((row) => row.id === kot.status) || COLUMNS[0]).accent
 }
 
-function ticketQuery(kot, table, waiter) {
+function ticketQuery(kot, tableLabel, waiter) {
   const items = (kot?.kot_items || []).map((item) => item.item_name).join(' ')
   return [
     kot?.kot_number,
-    tableHeading(table),
+    tableLabel,
     waiter?.full_name,
     waiter?.waiter_id,
     kotOrder(kot)?.order_number,
@@ -87,7 +88,17 @@ function ticketQuery(kot, table, waiter) {
     .toLowerCase()
 }
 
-function KotCard({ kot, table, waiter, order, working, now, onOpen, onStatus }) {
+function kotTableLabel(kot, tables) {
+  const list = tables || []
+  const order = kotOrder(kot)
+  const session = kotSession(kot)
+  const group = tablesForSession(list, session)
+  if (group.length > 1) return sessionTablesLabel(group, { compact: true })
+  const table = list.find((item) => item.id === order?.source_table_id) || list.find((item) => item.id === session?.primary_table_id) || group[0]
+  return table ? tableHeading(table) : 'Table'
+}
+
+function KotCard({ kot, tableLabel, waiter, order, working, now, onOpen, onStatus }) {
   const items = kot.kot_items || []
   const preview = items.slice(0, 3)
   const extra = items.length - preview.length
@@ -105,7 +116,7 @@ function KotCard({ kot, table, waiter, order, working, now, onOpen, onStatus }) 
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-display text-2xl leading-none">KOT #{kot.kot_number}</p>
-          <p className="mt-2 font-display text-xl leading-tight">{table ? tableHeading(table) : 'Table'}</p>
+          <p className="mt-2 font-display text-xl leading-tight">{tableLabel || 'Table'}</p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${column.pill}`}>
@@ -169,7 +180,7 @@ function KotCard({ kot, table, waiter, order, working, now, onOpen, onStatus }) 
   )
 }
 
-function TicketDrawer({ open, kot, table, waiter, order, session, working, now, onClose, onStatus }) {
+function TicketDrawer({ open, kot, tableLabel, waiter, order, session, working, now, onClose, onStatus }) {
   useEffect(() => {
     if (!open) return undefined
     function onKey(event) {
@@ -196,7 +207,7 @@ function TicketDrawer({ open, kot, table, waiter, order, session, working, now, 
           <div>
             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Kitchen ticket</p>
             <h2 className="mt-1 font-display text-2xl">KOT #{kot.kot_number}</h2>
-            <p className="mt-1 text-sm text-muted">{table ? tableHeading(table) : 'Table'}</p>
+            <p className="mt-1 text-sm text-muted">{tableLabel || 'Table'}</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${column.pill}`}>
                 {kotStatusLabel(kot.status)}
@@ -306,12 +317,8 @@ export default function Kitchen() {
     return () => window.clearInterval(timer)
   }, [])
 
-  const tableById = useMemo(() => Object.fromEntries((tables || []).map((table) => [table.id, table])), [tables])
-
-  function tableFor(kot) {
-    const order = kotOrder(kot)
-    const session = kotSession(kot)
-    return tableById[order?.source_table_id] || tableById[session?.primary_table_id] || null
+  function labelFor(kot) {
+    return kotTableLabel(kot, tables)
   }
 
   const visible = useMemo(() => {
@@ -320,9 +327,9 @@ export default function Kitchen() {
       if (filter === 'add_ons' && kot.kot_type !== 'add_on') return false
       if (filter !== 'all' && filter !== 'add_ons' && kot.status !== filter) return false
       if (!needle) return true
-      return ticketQuery(kot, tableFor(kot), kotWaiter(kot)).includes(needle)
+      return ticketQuery(kot, labelFor(kot), kotWaiter(kot)).includes(needle)
     })
-  }, [kots, filter, query, tableById])
+  }, [kots, filter, query, tables])
 
   const grouped = useMemo(() => {
     const next = { new: [], preparing: [], ready: [] }
@@ -461,7 +468,7 @@ export default function Kitchen() {
                       <KotCard
                         key={kot.id}
                         kot={kot}
-                        table={tableFor(kot)}
+                        tableLabel={labelFor(kot)}
                         waiter={kotWaiter(kot)}
                         order={kotOrder(kot)}
                         working={workingId === kot.id}
@@ -481,7 +488,7 @@ export default function Kitchen() {
       <TicketDrawer
         open={Boolean(selected)}
         kot={selected}
-        table={selected ? tableFor(selected) : null}
+        tableLabel={selected ? labelFor(selected) : ''}
         waiter={selected ? kotWaiter(selected) : null}
         order={selected ? kotOrder(selected) : null}
         session={selected ? kotSession(selected) : null}

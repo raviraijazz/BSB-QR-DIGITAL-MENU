@@ -4,9 +4,11 @@ import Alert from '../../components/Alert'
 import Button from '../../components/Button'
 import EmptyState from '../../components/EmptyState'
 import Spinner from '../../components/Spinner'
-import { applyBillDiscount, firstRelated, formatBillMoney, formatClock, formatQty, isOpenSession, kotStatusLabel, kotTypeLabel, orderStatusLabel, sessionOrderTotals } from '../../lib/orderCart'
-import { tableHeading } from '../../lib/tableToken'
+import { applyBillDiscount, firstRelated, formatBillMoney, formatClock, formatQty, isOpenSession, kotStatusLabel, kotTypeLabel, orderStatusLabel, paymentMethodLabel, sessionOrderTotals } from '../../lib/orderCart'
+import { sessionTablesLabel, tableHeading } from '../../lib/tableToken'
+import { tablesForSession } from '../../services/tableMoves'
 import { getSessionBill } from '../../services/bills'
+import { listSessionPayments, paymentBalance } from '../../services/payments'
 import { getSession, tableForSession, waiterOwnsSession } from '../../services/tableSessions'
 import { listSessionOrders, orderSubtotal } from '../../services/waiterOrders'
 
@@ -18,11 +20,13 @@ export default function WaiterSession() {
   const [session, setSession] = useState(null)
   const [orders, setOrders] = useState([])
   const [bill, setBill] = useState(null)
+  const [payments, setPayments] = useState([])
   const [error, setError] = useState('')
   const [notice, setNotice] = useState(location.state?.notice || '')
   const [loading, setLoading] = useState(true)
 
   const table = useMemo(() => tableForSession(tables, session), [tables, session])
+  const group = useMemo(() => tablesForSession(tables, session), [tables, session])
 
   async function load(silent = false) {
     if (!restaurant?.id || !sessionId) return
@@ -32,18 +36,21 @@ export default function WaiterSession() {
       setSession(null)
       setOrders([])
       setBill(null)
+      setPayments([])
       setError(sessionError?.message || 'Session not found or not assigned to you.')
       setLoading(false)
       return
     }
-    const [{ data: nextOrders, error: orderError }, nextBill] = await Promise.all([
+    const [{ data: nextOrders, error: orderError }, nextBill, nextPayments] = await Promise.all([
       listSessionOrders(restaurant.id, data.id),
       getSessionBill(restaurant.id, data.id),
+      listSessionPayments(restaurant.id, data.id),
     ])
     setSession(data)
     setOrders(nextOrders ?? [])
     setBill(nextBill.data || null)
-    setError(orderError?.message || nextBill.error?.message || '')
+    setPayments(nextPayments.data ?? [])
+    setError(orderError?.message || nextBill.error?.message || nextPayments.error?.message || '')
     setLoading(false)
   }
 
@@ -78,6 +85,7 @@ export default function WaiterSession() {
   const open = isOpenSession(session)
   const totals = sessionOrderTotals(orders)
   const running = applyBillDiscount(totals.subtotal, bill?.discount_type, bill?.discount_value)
+  const balance = paymentBalance(running.payable, payments)
 
   return (
     <div className="space-y-6">
@@ -86,12 +94,15 @@ export default function WaiterSession() {
           <Link to="/waiter" className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted hover:text-ink">
             My Tables
           </Link>
-          <h1 className="mt-1 font-display text-3xl">{table ? tableHeading(table) : 'Table'}</h1>
+          <h1 className="mt-1 font-display text-3xl">
+            {group.length > 1 ? sessionTablesLabel(group, { compact: true }) : table ? tableHeading(table) : 'Table'}
+          </h1>
           <p className="mt-1 text-sm text-muted">
             {restaurant?.name || 'Restaurant'} · {waiter.full_name} · <span className="font-mono">{waiter.waiter_id}</span>
           </p>
           <p className="text-sm text-muted">
             {session.session_number} · {open ? 'Active session' : 'Closed'} · Started {formatClock(session.started_at)}
+            {group.length > 1 ? ` · ${group.length} tables` : ''}
           </p>
         </div>
         {open ? (
@@ -101,7 +112,7 @@ export default function WaiterSession() {
         )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <div className="rounded-2xl border border-line bg-card px-4 py-3">
           <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Orders</p>
           <p className="mt-1 font-display text-2xl">{totals.orderCount}</p>
@@ -115,13 +126,34 @@ export default function WaiterSession() {
           <p className="mt-1 font-display text-2xl">{running.discountAmount ? formatBillMoney(running.discountAmount) : 'None'}</p>
         </div>
         <div className="rounded-2xl border border-line bg-card px-4 py-3">
-          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Payable</p>
-          <p className="mt-1 font-display text-2xl">{formatBillMoney(running.payable)}</p>
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Paid</p>
+          <p className="mt-1 font-display text-2xl">{formatBillMoney(balance.paid)}</p>
+        </div>
+        <div className="rounded-2xl border border-line bg-card px-4 py-3">
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Remaining</p>
+          <p className="mt-1 font-display text-2xl">{formatBillMoney(balance.remaining)}</p>
         </div>
       </div>
 
       <Alert>{error}</Alert>
       <Alert type="success">{notice}</Alert>
+
+      {payments.length ? (
+        <div className="rounded-2xl border border-line bg-card p-4">
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Payments</p>
+          <ul className="mt-3 space-y-2 text-sm">
+            {payments.map((row) => (
+              <li key={row.id} className="flex justify-between gap-3">
+                <span>
+                  {paymentMethodLabel(row.payment_method)}
+                  <span className="mt-0.5 block text-xs text-muted">{formatClock(row.paid_at || row.created_at)}</span>
+                </span>
+                <span className="tabular-nums">{formatBillMoney(row.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {orders.length === 0 ? (
         <EmptyState
@@ -152,7 +184,7 @@ export default function WaiterSession() {
                     )}
                   </div>
                   <div className="text-right">
-                    <p className="font-medium">{formatMoney(orderSubtotal(items))}</p>
+                    <p className="font-medium">{formatBillMoney(orderSubtotal(items))}</p>
                     <p className="text-xs text-muted">{kot ? kotStatusLabel(kot.status) : orderStatusLabel(order.status)}</p>
                   </div>
                 </div>
@@ -163,7 +195,7 @@ export default function WaiterSession() {
                         {formatQty(item.quantity)} × {item.item_name}
                         {item.notes ? <span className="block text-xs text-muted">{item.notes}</span> : null}
                       </span>
-                      <span className="text-muted">{formatMoney(item.line_total)}</span>
+                      <span className="text-muted">{formatBillMoney(item.line_total)}</span>
                     </li>
                   ))}
                 </ul>
