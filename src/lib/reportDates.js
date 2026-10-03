@@ -135,3 +135,20 @@ export function localDayKeyFromInstant(value, offsetMinutes = tzOffsetMinutes())
   const shifted = new Date(new Date(value).getTime() + Number(offsetMinutes || 0) * 60000)
   return shifted.toISOString().slice(0, 10)
 }
+
+export function localMonthKeyFromInstant(value, offsetMinutes = tzOffsetMinutes()) {
+  return localDayKeyFromInstant(value, offsetMinutes).slice(0, 7)
+}
+
+export function formatMonthLabel(monthKey) {
+  if (!monthKey) return '—'
+  const [year, month] = String(monthKey).split('-').map(Number)
+  if (!year || !month) return String(monthKey)
+  return new Date(year, month - 1, 1).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+}
+
+export function hourLabel(hour) {
+  const n = Number(hour)
+  if (!Number.isFinite(n)) return '—'
+  return `${String(n).padStart(2, '0')}:00`
+}

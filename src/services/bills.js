@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase'
-import { applyBillDiscount, firstRelated, isOpenSession, sessionOrderTotals } from '../lib/orderCart'
+import { calculateBill, restaurantTaxSettings, snapshotFromTotals, taxSettingsFromBill } from '../lib/billing'
+import { firstRelated, isOpenSession, sessionOrderTotals } from '../lib/orderCart'
 
 const BILL_SELECT =
   'id, restaurant_id, session_id, bill_number, subtotal, discount_type, discount_value, discount_amount, taxable_amount, cgst_amount, sgst_amount, other_tax_amount, grand_total, status, created_at, updated_at'
@@ -43,24 +44,32 @@ export function sessionWaiterFromOrders(orders, waitersById) {
   return null
 }
 
-export function billSnapshot(subtotal, discountType, discountValue) {
-  const next = applyBillDiscount(subtotal, discountType, discountValue)
-  return {
-    subtotal,
-    discount_type: next.discountType,
-    discount_value: next.discountValue,
-    discount_amount: next.discountAmount,
-    taxable_amount: next.taxable,
-    cgst_amount: 0,
-    sgst_amount: 0,
-    other_tax_amount: 0,
-    grand_total: next.payable,
-  }
+export function billSnapshot(subtotal, discountType, discountValue, tax) {
+  return snapshotFromTotals(
+    calculateBill({
+      subtotal,
+      discountType,
+      discountValue,
+      tax,
+    }),
+  )
 }
 
-export function runningBillView(session, orders, bill, table, waiter) {
-  const totals = sessionOrderTotals(orders)
-  const discount = applyBillDiscount(totals.subtotal, bill?.discount_type, bill?.discount_value)
+export function resolveBillTax(bill, restaurant) {
+  const saved = taxSettingsFromBill(bill)
+  if (saved.enabled) return saved
+  return restaurantTaxSettings(restaurant)
+}
+
+export function runningBillView(session, orders, bill, table, waiter, restaurant) {
+  const orderTotals = sessionOrderTotals(orders)
+  const tax = resolveBillTax(bill, restaurant)
+  const totals = calculateBill({
+    subtotal: orderTotals.subtotal,
+    discountType: bill?.discount_type,
+    discountValue: bill?.discount_value,
+    tax,
+  })
   return {
     session,
     orders: (orders || [])
@@ -71,12 +80,17 @@ export function runningBillView(session, orders, bill, table, waiter) {
     table,
     waiter,
     subtotal: totals.subtotal,
-    itemCount: totals.itemCount,
-    orderCount: totals.orderCount,
-    discountType: discount.discountType,
-    discountValue: discount.discountValue,
-    discountAmount: discount.discountAmount,
-    payable: discount.payable,
+    itemCount: orderTotals.itemCount,
+    orderCount: orderTotals.orderCount,
+    discountType: totals.discountType,
+    discountValue: totals.discountValue,
+    discountAmount: totals.discountAmount,
+    taxable: totals.taxable,
+    tax,
+    taxAmount: totals.taxAmount,
+    serviceCharge: totals.serviceCharge,
+    payable: totals.payable,
+    totals,
     status: bill?.status || 'open',
   }
 }
@@ -114,13 +128,14 @@ export async function getSessionBill(restaurantId, sessionId) {
   return { data: data || null, error: null }
 }
 
-export async function ensureSessionBill(restaurantId, session, orders, existingBills = []) {
+export async function ensureSessionBill(restaurantId, session, orders, existingBills = [], restaurant = null) {
   if (!restaurantId || !session?.id) return { data: null, error: { message: 'Session not found.' } }
   if (!isOpenSession(session)) return { data: null, error: { message: 'This table session is no longer active.' } }
 
   const current = (existingBills || []).find((bill) => bill.session_id === session.id)
   const totals = sessionOrderTotals(orders)
-  const snapshot = billSnapshot(totals.subtotal, current?.discount_type, current?.discount_value)
+  const tax = resolveBillTax(current, restaurant)
+  const snapshot = billSnapshot(totals.subtotal, current?.discount_type, current?.discount_value, tax)
 
   if (current) {
     if (current.status === 'paid' || current.status === 'cancelled') return { data: current, error: null }
@@ -165,12 +180,12 @@ export async function ensureSessionBill(restaurantId, session, orders, existingB
   return { data, error: null }
 }
 
-export async function saveBillDiscount(restaurantId, bill, subtotal, discountType, discountValue) {
+export async function saveBillDiscount(restaurantId, bill, subtotal, discountType, discountValue, tax) {
   if (!restaurantId || !bill?.id) return { data: null, error: { message: 'Running bill not found.' } }
   if (bill.status && bill.status !== 'open') {
     return { data: null, error: { message: bill.status === 'paid' ? 'This bill is already settled.' : 'Discount cannot change after a payment is recorded.' } }
   }
-  const snapshot = billSnapshot(subtotal, discountType, discountValue)
+  const snapshot = billSnapshot(subtotal, discountType, discountValue, tax)
   const { data, error } = await supabase
     .from('bills')
     .update(snapshot)

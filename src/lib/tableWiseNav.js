@@ -38,7 +38,7 @@ export const TABLE_WISE_MODULES = [
     to: '/dashboard/table-wise/collections',
     label: 'Collections',
     icon: 'collections',
-    lines: ['Daily collection report', 'Cash, UPI and card breakdown', 'Settled and outstanding bills'],
+    lines: ['Daily collection report', 'Sales, waiter and item analytics', 'Excel, CSV, PDF and print'],
     ready: true,
   },
   {
