@@ -44,9 +44,22 @@ function configuredTaxRates(restaurant) {
 }
 
 function statusTone(status) {
-  if (status === 'paid') return 'bg-emerald-50 text-emerald-800 border-emerald-200'
-  if (status === 'payment_pending') return 'bg-amber-50 text-amber-900 border-amber-200'
-  return 'bg-forest/10 text-forest border-forest/15'
+  if (status === 'paid') return 'border-emerald-200 bg-emerald-50 text-emerald-800'
+  if (status === 'payment_pending') return 'border-amber-200 bg-amber-50 text-amber-900'
+  return 'border-forest/20 bg-forest/10 text-forest'
+}
+
+function orderStatusTone(status) {
+  if (status === 'served' || status === 'ready') return 'border-emerald-200 bg-emerald-50 text-emerald-800'
+  if (status === 'preparing' || status === 'accepted') return 'border-amber-200 bg-amber-50 text-amber-900'
+  if (status === 'cancelled') return 'border-rose-200 bg-rose-50 text-rose-800'
+  return 'border-line bg-paper text-ink'
+}
+
+function kotStatusTone(status) {
+  if (status === 'ready' || status === 'served') return 'border-emerald-200 bg-emerald-50 text-emerald-800'
+  if (status === 'preparing') return 'border-amber-200 bg-amber-50 text-amber-900'
+  return 'border-sky-200 bg-sky-50 text-sky-900'
 }
 
 function methodTone(method) {
@@ -55,9 +68,9 @@ function methodTone(method) {
   return 'bg-emerald-50 text-emerald-800'
 }
 
-function SectionCard({ title, action, children, className = '' }) {
+function SectionCard({ title, action, children, className = '', id }) {
   return (
-    <section className={`rounded-2xl border border-line bg-card p-4 shadow-sm ${className}`}>
+    <section id={id} className={`rounded-[20px] border border-line bg-card p-4 shadow-sm sm:p-5 ${className}`}>
       {(title || action) && (
         <div className="mb-3 flex items-center justify-between gap-3">
           {title ? <h3 className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">{title}</h3> : <span />}
@@ -73,6 +86,19 @@ function pillClass(active, tone = 'ink') {
   if (active && tone === 'forest') return 'bg-forest text-[#f5ead8] shadow-sm'
   if (active) return 'bg-ink text-white shadow-sm'
   return 'border border-line bg-white text-muted hover:text-ink'
+}
+
+function SummaryRow({ label, value, tone = '' }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 text-sm">
+      <span className="text-muted">{label}</span>
+      <span className={`tabular-nums ${tone}`}>{value}</span>
+    </div>
+  )
+}
+
+function newSplitRow(amount = '') {
+  return { id: `p${Date.now()}-${Math.random().toString(16).slice(2, 6)}`, method: 'cash', amount, reference: '' }
 }
 
 export default function BillWorkspace({
@@ -104,7 +130,7 @@ export default function BillWorkspace({
   const [method, setMethod] = useState('cash')
   const [amount, setAmount] = useState('')
   const [reference, setReference] = useState('')
-  const [splits, setSplits] = useState([{ id: 'p1', method: 'cash', amount: '', reference: '' }])
+  const [splits, setSplits] = useState([newSplitRow()])
 
   const billPayments = payments || []
   const tax = {
@@ -150,19 +176,31 @@ export default function BillWorkspace({
     setPayMode('single')
     setMethod('cash')
     setReference('')
-    setSplits([{ id: 'p1', method: 'cash', amount: '', reference: '' }])
+    setSplits([newSplitRow()])
     setConfirmSettle(false)
+    setMoreOpen(false)
   }, [view.session?.id])
 
   useEffect(() => {
     setAmount(balance.remaining ? String(balance.remaining) : '')
     setSplits((rows) => {
-      if (rows.length === 1 && !rows[0].amount) {
+      if (rows.length === 1 && !String(rows[0].amount || '').trim()) {
         return [{ ...rows[0], amount: balance.remaining ? String(balance.remaining) : '' }]
       }
       return rows
     })
   }, [balance.remaining, view.bill?.id])
+
+  useEffect(() => {
+    function onKey(event) {
+      if (event.key === 'Escape') {
+        setMoreOpen(false)
+        setConfirmSettle(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const timeline = useMemo(() => {
     const rows = []
@@ -276,37 +314,47 @@ export default function BillWorkspace({
     onCollect({ splits: rows })
   }
 
+  function updateSplit(id, patch) {
+    setSplits((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)))
+  }
+
   const splitTotal = splitDraftTotal(plannedSplits())
   const splitRemaining = moneyRound(Math.max(0, balance.remaining - splitTotal))
+  const settledUi = view.status === 'paid' || balance.remaining <= 0
+  const waiter = waiterLabel(view.waiter)
+  const started = formatClock(view.session?.started_at)
+  const elapsed = elapsedLabel(view.session?.started_at)
+
+  const meta = [
+    { label: 'Session', value: view.session?.session_number || '—' },
+    { label: 'Waiter', value: waiter },
+    { label: 'Started', value: elapsed ? `${started} · ${elapsed}` : started },
+    { label: 'Orders', value: String(view.orderCount || 0) },
+    { label: 'Items', value: String(view.itemCount || 0) },
+  ]
 
   return (
-    <div className="space-y-4">
-      <header className="rounded-2xl border border-line bg-card px-4 py-4 shadow-sm sm:px-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div className="space-y-4 pb-24 xl:pb-4">
+      <header className="rounded-[20px] border border-line bg-card px-4 py-4 shadow-sm sm:px-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
             <button type="button" onClick={onBack} className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted hover:text-ink">
-              Running Bills
+              Running Bill
             </button>
             <div className="mt-1 flex flex-wrap items-center gap-2">
-              <h1 className="font-display text-3xl leading-none">{tableLabel}</h1>
-              <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${statusTone(view.status)}`}>
-                {billStatusLabel(view.status).toUpperCase()}
+              <h1 className="font-display text-[1.85rem] leading-none sm:text-3xl">{tableLabel}</h1>
+              <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-[0.12em] ${statusTone(view.status)}`}>
+                {billStatusLabel(view.status)}
               </span>
             </div>
-            <p className="mt-2 text-sm text-muted">
-              {view.session?.session_number || 'Session'}
-              {view.bill?.bill_number ? ` · ${view.bill.bill_number}` : ''}
-              {' · '}
-              {waiterLabel(view.waiter)}
-            </p>
-            <p className="mt-1 text-xs text-muted">
-              Started {formatClock(view.session?.started_at)}
-              {elapsedLabel(view.session?.started_at) ? ` · ${elapsedLabel(view.session?.started_at)}` : ''}
-              {' · '}
-              {view.orderCount} {view.orderCount === 1 ? 'order' : 'orders'}
-              {' · '}
-              {view.itemCount} items
-            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {meta.map((row) => (
+                <span key={row.label} className="rounded-full border border-line bg-paper px-2.5 py-1 text-[12px] text-muted">
+                  <span className="uppercase tracking-[0.08em]">{row.label}</span>
+                  <span className="ml-1.5 font-medium text-ink">{row.value}</span>
+                </span>
+              ))}
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" className="rounded-xl shadow-sm" onClick={onMerge}>
@@ -319,11 +367,18 @@ export default function BillWorkspace({
               Refresh
             </Button>
             <div className="relative">
-              <Button variant="secondary" className="rounded-xl px-3 shadow-sm" onClick={() => setMoreOpen((value) => !value)} aria-label="More">
+              <Button
+                variant="secondary"
+                className="rounded-xl px-3 shadow-sm"
+                aria-haspopup="menu"
+                aria-expanded={moreOpen}
+                aria-label="More"
+                onClick={() => setMoreOpen((value) => !value)}
+              >
                 <NavIcon name="more" className="h-4 w-4" />
               </Button>
               {moreOpen ? (
-                <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-lg">
+                <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-lg" role="menu">
                   <button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-paper" onClick={() => { setMoreOpen(false); onBack() }}>
                     All running bills
                   </button>
@@ -340,16 +395,18 @@ export default function BillWorkspace({
       <Alert>{error}</Alert>
       <Alert type="success">{notice}</Alert>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.95fr)_minmax(18rem,0.8fr)] lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-        <div className="space-y-4">
+      <div className="bill-workspace-grid">
+        <div className="area-orders space-y-4">
           <SectionCard
             title="Orders"
             action={
-              <div className="flex gap-1">
+              <div className="flex gap-1" role="tablist" aria-label="Bill workspace">
                 {TABS.map((option) => (
                   <button
                     key={option.id}
                     type="button"
+                    role="tab"
+                    aria-selected={tab === option.id}
                     onClick={() => setTab(option.id)}
                     className={`rounded-full px-3 py-1 text-[12px] font-medium ${pillClass(tab === option.id)}`}
                   >
@@ -370,24 +427,25 @@ export default function BillWorkspace({
                     <article key={order.id} className="rounded-2xl border border-line bg-white px-4 py-3">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="font-display text-lg">Order #{order.order_number}</p>
-                          <p className="mt-0.5 text-xs text-muted">
+                          <p className="font-display text-lg leading-none">Order #{order.order_number}</p>
+                          <p className="mt-1 text-xs text-muted">
                             {formatClock(order.created_at)} · {orderWaiter}
                           </p>
                         </div>
-                        <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusTone(order.status === 'served' ? 'paid' : 'open')}`}>
+                        <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${orderStatusTone(order.status)}`}>
                           {orderStatusLabel(order.status)}
                         </span>
                       </div>
                       <ul className="mt-3 space-y-1.5 text-sm">
                         {orderItems.map((item) => (
-                          <li key={item.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3">
+                          <li key={item.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-0.5">
                             <span className="min-w-0">
-                              {item.item_name} ×{formatQty(item.quantity)}
+                              {item.item_name}
                               {item.notes ? <span className="mt-0.5 block text-xs text-muted">{item.notes}</span> : null}
                             </span>
-                            <span className="tabular-nums text-muted">{formatBillMoney(item.unit_price)}</span>
-                            <span className="tabular-nums">{formatBillMoney(item.line_total)}</span>
+                            <span className="text-muted tabular-nums">×{formatQty(item.quantity)}</span>
+                            <span className="text-right tabular-nums">{formatBillMoney(item.line_total)}</span>
+                            <span className="col-span-3 text-[11px] text-muted">Rate {formatBillMoney(item.unit_price)}</span>
                           </li>
                         ))}
                       </ul>
@@ -406,19 +464,20 @@ export default function BillWorkspace({
                     <article key={kot.id} className="rounded-2xl border border-line bg-white px-4 py-3">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="font-display text-lg">KOT #{kot.kot_number}</p>
-                          <p className="mt-0.5 text-xs text-muted">
+                          <p className="font-display text-lg leading-none">KOT #{kot.kot_number}</p>
+                          <p className="mt-1 text-xs text-muted">
                             {formatClock(kot.created_at)} · Order #{order.order_number} · {kotTypeLabel(kot.kot_type)}
                           </p>
                         </div>
-                        <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusTone(kot.status === 'ready' ? 'paid' : kot.status === 'preparing' ? 'payment_pending' : 'open')}`}>
+                        <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${kotStatusTone(kot.status)}`}>
                           {kotStatusLabel(kot.status)}
                         </span>
                       </div>
                       <ul className="mt-3 space-y-1.5 text-sm">
                         {(kot.kot_items || []).map((item) => (
                           <li key={item.id} className="flex justify-between gap-3">
-                            <span>{item.item_name} ×{formatQty(item.quantity)}</span>
+                            <span>{item.item_name}</span>
+                            <span className="tabular-nums text-muted">×{formatQty(item.quantity)}</span>
                           </li>
                         ))}
                       </ul>
@@ -432,8 +491,8 @@ export default function BillWorkspace({
               <ol className="space-y-3">
                 {timeline.map((row) => (
                   <li key={row.id} className="flex gap-3 text-sm">
-                    <span className="w-16 shrink-0 text-xs text-muted">{formatClock(row.at)}</span>
-                    <span>
+                    <span className="w-16 shrink-0 pt-0.5 text-xs tabular-nums text-muted">{formatClock(row.at)}</span>
+                    <span className="min-w-0 border-l border-line pl-3">
                       <span className="block font-medium">{row.title}</span>
                       <span className="block text-xs text-muted">{row.detail}</span>
                     </span>
@@ -452,7 +511,7 @@ export default function BillWorkspace({
                   <thead>
                     <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.12em] text-muted">
                       <th className="pb-2 font-medium">Item</th>
-                      <th className="pb-2 text-right font-medium">Qty</th>
+                      <th className="pb-2 text-right font-medium">Total Qty</th>
                       <th className="pb-2 text-right font-medium">Rate</th>
                       <th className="pb-2 text-right font-medium">Amount</th>
                     </tr>
@@ -460,7 +519,7 @@ export default function BillWorkspace({
                   <tbody>
                     {items.rows.map((row) => (
                       <tr key={`${row.name}-${row.rate}`} className="border-b border-line last:border-b-0">
-                        <td className="py-2">{row.name}</td>
+                        <td className="py-2 pr-3">{row.name}</td>
                         <td className="py-2 text-right tabular-nums">{formatQty(row.qty)}</td>
                         <td className="py-2 text-right tabular-nums">{formatBillMoney(row.rate)}</td>
                         <td className="py-2 text-right tabular-nums">{formatBillMoney(row.amount)}</td>
@@ -479,188 +538,55 @@ export default function BillWorkspace({
           </SectionCard>
         </div>
 
-        <div className="space-y-4">
+        <div className="area-bill space-y-4">
           <SectionCard title="Bill Summary">
-            <p className="font-display text-xl">{tableLabel}</p>
-            <p className="mt-1 text-sm text-muted">
-              {view.session?.session_number || 'Session'} · {waiterLabel(view.waiter)}
-            </p>
-            <dl className="mt-4 space-y-2 text-sm">
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">Subtotal</dt>
-                <dd className="tabular-nums">{formatBillMoney(preview.subtotal)}</dd>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-display text-xl leading-none">{tableLabel}</p>
+                <p className="mt-1.5 text-sm text-muted">
+                  {view.session?.session_number || 'Session'}
+                  {view.bill?.bill_number ? ` · ${view.bill.bill_number}` : ''}
+                </p>
+                <p className="text-sm text-muted">
+                  {waiter} · {started}
+                </p>
               </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">Discount</dt>
-                <dd className="tabular-nums text-emerald-800">{preview.discountAmount ? `-${formatBillMoney(preview.discountAmount)}` : 'None'}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">Taxable Value</dt>
-                <dd className="tabular-nums">{formatBillMoney(preview.taxable)}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">{preview.taxMode === 'inclusive' ? 'GST (included)' : 'GST / Tax'}</dt>
-                <dd className="tabular-nums">{preview.taxAmount ? formatBillMoney(preview.taxAmount) : 'None'}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">Service Charge</dt>
-                <dd className="tabular-nums">{preview.serviceCharge ? formatBillMoney(preview.serviceCharge) : 'None'}</dd>
-              </div>
-              <div className="flex justify-between gap-3 border-t border-line pt-3 font-display text-2xl">
-                <dt>Grand Total</dt>
-                <dd className="tabular-nums">{formatBillMoney(preview.payable)}</dd>
+              <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-[0.12em] ${statusTone(view.status)}`}>
+                {billStatusLabel(view.status)}
+              </span>
+            </div>
+            <dl className="mt-4 space-y-2">
+              <SummaryRow label="Subtotal" value={formatBillMoney(preview.subtotal)} />
+              <SummaryRow
+                label="Discount"
+                value={preview.discountAmount ? `-${formatBillMoney(preview.discountAmount)}` : 'None'}
+                tone={preview.discountAmount ? 'text-emerald-800' : ''}
+              />
+              <SummaryRow label="Taxable Value" value={formatBillMoney(preview.taxable)} />
+              <SummaryRow
+                label={preview.taxMode === 'inclusive' ? 'GST / Tax (included)' : 'GST / Tax'}
+                value={preview.taxAmount ? formatBillMoney(preview.taxAmount) : 'None'}
+              />
+              <SummaryRow label="Service Charge" value={preview.serviceCharge ? formatBillMoney(preview.serviceCharge) : 'None'} />
+              <div className="flex items-baseline justify-between gap-3 border-t border-line pt-3">
+                <dt className="font-display text-xl">Grand Total</dt>
+                <dd className="font-display text-2xl tabular-nums leading-none">{formatBillMoney(preview.payable)}</dd>
               </div>
             </dl>
             <div className="mt-4 grid grid-cols-2 gap-2">
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-3">
                 <p className="text-[11px] uppercase tracking-[0.12em] text-emerald-800">Paid Amount</p>
-                <p className="mt-1 font-display text-2xl tabular-nums text-emerald-900">{formatBillMoney(balance.paid)}</p>
+                <p className="mt-1 font-display text-2xl leading-none tabular-nums text-emerald-900">{formatBillMoney(balance.paid)}</p>
               </div>
               <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-3">
                 <p className="text-[11px] uppercase tracking-[0.12em] text-rose-800">Remaining</p>
-                <p className="mt-1 font-display text-2xl tabular-nums text-rose-900">{formatBillMoney(balance.remaining)}</p>
+                <p className="mt-1 font-display text-2xl leading-none tabular-nums text-rose-900">{formatBillMoney(balance.remaining)}</p>
               </div>
             </div>
           </SectionCard>
-
-          <SectionCard title="Collect Payment">
-            {view.status === 'paid' || balance.remaining <= 0 ? (
-              <div className="rounded-2xl bg-emerald-50 px-4 py-6 text-center">
-                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-emerald-800">Payment Successful</p>
-                <p className="mt-2 font-display text-3xl tabular-nums">{formatBillMoney(preview.payable)}</p>
-                <p className="mt-2 text-sm font-medium text-forest">Table Session Closed</p>
-              </div>
-            ) : (
-              <>
-                <p className="font-display text-3xl tabular-nums leading-none">{formatBillMoney(balance.remaining)}</p>
-                <p className="mt-1 text-xs text-muted">Amount Due</p>
-                <div className="mt-3 flex gap-1.5" role="group" aria-label="Payment mode">
-                  {[
-                    { id: 'single', label: 'Single' },
-                    { id: 'split', label: 'Split' },
-                  ].map((option) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => setPayMode(option.id)}
-                      className={`rounded-full px-3 py-1.5 text-[12px] font-medium ${pillClass(payMode === option.id, 'forest')}`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-                <Alert>{payError}</Alert>
-                {payMode === 'single' ? (
-                  <form className="mt-3 space-y-3" onSubmit={submitSingle}>
-                    <div className="flex gap-1.5" role="group" aria-label="Payment method">
-                      {PAYMENT_METHODS.map((option) => (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => setMethod(option.id)}
-                          className={`rounded-full px-3 py-1.5 text-[12px] font-medium ${method === option.id ? methodTone(option.id) + ' ring-1 ring-current' : 'border border-line bg-white text-muted'}`}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                    <Field label="Amount">
-                      <input className={inputClass} type="number" min="0.01" step="0.01" max={balance.remaining} value={amount} onChange={(event) => setAmount(event.target.value)} />
-                    </Field>
-                    {method !== 'cash' ? (
-                      <Field label="Reference" hint="Optional">
-                        <input className={inputClass} value={reference} onChange={(event) => setReference(event.target.value)} placeholder={method === 'upi' ? 'UPI ref' : 'Card ref'} />
-                      </Field>
-                    ) : null}
-                    <Button type="submit" className="w-full bg-forest hover:bg-forest-deep" disabled={collecting || emptyOrders}>
-                      {collecting ? 'Recording...' : 'Add Payment'}
-                    </Button>
-                  </form>
-                ) : (
-                  <div className="mt-3 space-y-3">
-                    <div className="rounded-xl border border-line bg-paper/70 px-3 py-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted">Total Due</span>
-                        <span className="font-medium tabular-nums">{formatBillMoney(balance.remaining)}</span>
-                      </div>
-                    </div>
-                    {splits.map((row, index) => (
-                      <div key={row.id} className="rounded-2xl border border-line bg-white p-3">
-                        <div className="mb-2 flex items-center justify-between">
-                          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">Payment {index + 1}</p>
-                          {splits.length > 1 ? (
-                            <button
-                              type="button"
-                              className="text-xs text-rose-700"
-                              onClick={() => setSplits((current) => current.filter((item) => item.id !== row.id))}
-                            >
-                              Remove
-                            </button>
-                          ) : null}
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {PAYMENT_METHODS.map((option) => (
-                            <button
-                              key={option.id}
-                              type="button"
-                              onClick={() => setSplits((current) => current.map((item) => (item.id === row.id ? { ...item, method: option.id } : item)))}
-                              className={`rounded-full px-3 py-1 text-[12px] font-medium ${row.method === option.id ? methodTone(option.id) + ' ring-1 ring-current' : 'border border-line bg-paper text-muted'}`}
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                          <Field label="Amount">
-                            <input
-                              className={inputClass}
-                              type="number"
-                              min="0.01"
-                              step="0.01"
-                              value={row.amount}
-                              onChange={(event) => setSplits((current) => current.map((item) => (item.id === row.id ? { ...item, amount: event.target.value } : item)))}
-                            />
-                          </Field>
-                          {row.method !== 'cash' ? (
-                            <Field label="Reference" hint="Optional">
-                              <input
-                                className={inputClass}
-                                value={row.reference}
-                                onChange={(event) => setSplits((current) => current.map((item) => (item.id === row.id ? { ...item, reference: event.target.value } : item)))}
-                              />
-                            </Field>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted">Total Paid</span>
-                      <span className="tabular-nums">{formatBillMoney(splitTotal)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm font-medium">
-                      <span>Remaining</span>
-                      <span className={`tabular-nums ${splitRemaining ? 'text-rose-800' : 'text-forest'}`}>{formatBillMoney(splitRemaining)}</span>
-                    </div>
-                    {splitRemaining > 0 ? (
-                      <Button
-                        variant="secondary"
-                        className="w-full"
-                        onClick={() => setSplits((current) => [...current, { id: `p${Date.now()}`, method: 'upi', amount: String(splitRemaining), reference: '' }])}
-                      >
-                        Add Another Payment
-                      </Button>
-                    ) : null}
-                    <Button className="w-full bg-forest hover:bg-forest-deep" disabled={collecting || emptyOrders || splitTotal <= 0} onClick={submitSplits}>
-                      {collecting ? 'Recording...' : splitRemaining === 0 ? 'Settle Bill' : 'Record Payments'}
-                    </Button>
-                  </div>
-                )}
-              </>
-            )}
-          </SectionCard>
         </div>
 
-        <div className="space-y-4 lg:col-span-2 xl:col-span-1">
+        <div className="area-adjust space-y-4">
           <SectionCard title="Discount">
             <form className="space-y-3" onSubmit={submitDiscount}>
               <div className="flex gap-1.5" role="group" aria-label="Discount type">
@@ -698,10 +624,14 @@ export default function BillWorkspace({
                   disabled={!canEdit}
                 />
               </Field>
-              <div className="rounded-xl border border-line bg-paper/70 px-3 py-2 text-sm">
-                <div className="flex justify-between"><span className="text-muted">Subtotal</span><span className="tabular-nums">{formatBillMoney(preview.subtotal)}</span></div>
-                <div className="flex justify-between"><span className="text-muted">Calculated Discount</span><span className="tabular-nums text-emerald-800">{preview.discountAmount ? formatBillMoney(preview.discountAmount) : 'None'}</span></div>
-                <div className="flex justify-between"><span className="text-muted">Taxable</span><span className="tabular-nums">{formatBillMoney(preview.taxable)}</span></div>
+              <div className="space-y-1.5 rounded-2xl border border-line bg-paper/80 px-3 py-2.5 text-sm">
+                <SummaryRow label="Subtotal" value={formatBillMoney(preview.subtotal)} />
+                <SummaryRow
+                  label="Calculated Discount"
+                  value={preview.discountAmount ? formatBillMoney(preview.discountAmount) : 'None'}
+                  tone={preview.discountAmount ? 'text-emerald-800' : ''}
+                />
+                <SummaryRow label="Taxable" value={formatBillMoney(preview.taxable)} />
               </div>
               <Button type="submit" className="w-full bg-forest hover:bg-forest-deep" disabled={working || emptyOrders || !canEdit}>
                 {working ? 'Saving...' : 'Apply Discount'}
@@ -753,19 +683,32 @@ export default function BillWorkspace({
                         ))}
                       </select>
                     ) : (
-                      <input className={inputClass} type="number" min="0" step="0.01" value={taxRate} disabled={!canEdit} onChange={(event) => setTaxRate(event.target.value)} placeholder="Restaurant tax rate" />
+                      <input
+                        className={inputClass}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={taxRate}
+                        disabled={!canEdit}
+                        onChange={(event) => setTaxRate(event.target.value)}
+                        placeholder="Restaurant tax rate"
+                      />
                     )}
                   </Field>
                 </>
               ) : (
-                <p className="text-sm text-muted">Tax is off. Grand total equals taxable value{preview.serviceCharge ? ' plus service charge' : ''}.</p>
+                <p className="text-sm text-muted">
+                  Tax is off. Grand total equals taxable value{preview.serviceCharge ? ' plus service charge' : ''}.
+                </p>
               )}
               <Button type="submit" className="w-full" variant="secondary" disabled={working || emptyOrders || !canEdit}>
                 {working ? 'Saving...' : 'Apply Tax'}
               </Button>
             </form>
           </SectionCard>
+        </div>
 
+        <div className="area-history space-y-4">
           <SectionCard title="Payment History">
             {billPayments.length ? (
               <ul className="space-y-3">
@@ -777,8 +720,11 @@ export default function BillWorkspace({
                       </span>
                       <span className="mt-1 block text-xs text-muted">{formatClock(row.paid_at || row.created_at)}</span>
                       {row.payment_reference ? <span className="block text-xs text-muted">{row.payment_reference}</span> : null}
+                      {row.collected_by || row.collected_by_name ? (
+                        <span className="block text-xs text-muted">{row.collected_by_name || row.collected_by}</span>
+                      ) : null}
                     </span>
-                    <span className="tabular-nums font-medium">{formatBillMoney(row.amount)}</span>
+                    <span className="font-medium tabular-nums">{formatBillMoney(row.amount)}</span>
                   </li>
                 ))}
               </ul>
@@ -791,16 +737,182 @@ export default function BillWorkspace({
             </div>
           </SectionCard>
         </div>
+
+        <div className="area-pay space-y-4">
+          <SectionCard title="Collect Payment" id="collect-payment">
+            {settledUi ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-6 text-center">
+                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-emerald-800">Payment Successful</p>
+                <p className="mt-2 font-display text-3xl tabular-nums">{formatBillMoney(preview.payable)}</p>
+                <p className="mt-2 text-sm text-emerald-900">{formatBillMoney(balance.paid)} Paid</p>
+                <p className="mt-3 text-sm font-medium text-forest">Table Session Closed</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-[11px] uppercase tracking-[0.12em] text-muted">Amount Due</p>
+                <p className="mt-1 font-display text-4xl leading-none tabular-nums">{formatBillMoney(balance.remaining)}</p>
+                <div className="mt-4 flex gap-1.5" role="group" aria-label="Payment mode">
+                  {[
+                    { id: 'single', label: 'Single' },
+                    { id: 'split', label: 'Split' },
+                  ].map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setPayMode(option.id)}
+                      className={`rounded-full px-3 py-1.5 text-[12px] font-medium ${pillClass(payMode === option.id, 'forest')}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <Alert>{payError}</Alert>
+                {payMode === 'single' ? (
+                  <form className="mt-3 space-y-3" onSubmit={submitSingle}>
+                    <div className="flex gap-1.5" role="group" aria-label="Payment method">
+                      {PAYMENT_METHODS.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => setMethod(option.id)}
+                          className={`rounded-full px-3 py-1.5 text-[12px] font-medium ${
+                            method === option.id ? `${methodTone(option.id)} ring-1 ring-current` : 'border border-line bg-white text-muted'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                    <Field label="Amount">
+                      <input
+                        className={inputClass}
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        max={balance.remaining}
+                        value={amount}
+                        onChange={(event) => setAmount(event.target.value)}
+                      />
+                    </Field>
+                    {method !== 'cash' ? (
+                      <Field label="Reference" hint="Optional">
+                        <input
+                          className={inputClass}
+                          value={reference}
+                          onChange={(event) => setReference(event.target.value)}
+                          placeholder={method === 'upi' ? 'UPI ref' : 'Card ref'}
+                        />
+                      </Field>
+                    ) : null}
+                    <Button type="submit" className="w-full bg-forest hover:bg-forest-deep" disabled={collecting || emptyOrders}>
+                      {collecting ? 'Recording...' : moneyRound(amount) >= balance.remaining - 0.001 ? 'Settle Bill' : 'Add Payment'}
+                    </Button>
+                  </form>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    <div className="rounded-2xl border border-line bg-paper/80 px-3 py-2.5 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted">Total Due</span>
+                        <span className="font-medium tabular-nums">{formatBillMoney(balance.remaining)}</span>
+                      </div>
+                    </div>
+                    <div className="overflow-hidden rounded-2xl border border-line bg-white">
+                      <div className="grid grid-cols-[1fr_6.5rem_auto] gap-2 border-b border-line bg-paper px-3 py-2 text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                        <span>Method</span>
+                        <span className="text-right">Amount</span>
+                        <span className="text-right">Action</span>
+                      </div>
+                      {splits.map((row, index) => (
+                        <div key={row.id} className="border-b border-line px-3 py-3 last:border-b-0">
+                          <div className="mb-2 flex items-center justify-between">
+                            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">Payment {index + 1}</p>
+                            {splits.length > 1 ? (
+                              <button type="button" className="text-xs text-rose-700" onClick={() => setSplits((current) => current.filter((item) => item.id !== row.id))}>
+                                Remove
+                              </button>
+                            ) : (
+                              <span className="text-xs text-muted"> </span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-[1fr_6.5rem] items-start gap-2">
+                            <div className="flex flex-wrap gap-1.5">
+                              {PAYMENT_METHODS.map((option) => (
+                                <button
+                                  key={option.id}
+                                  type="button"
+                                  onClick={() => updateSplit(row.id, { method: option.id })}
+                                  className={`rounded-full px-3 py-1 text-[12px] font-medium ${
+                                    row.method === option.id ? `${methodTone(option.id)} ring-1 ring-current` : 'border border-line bg-paper text-muted'
+                                  }`}
+                                >
+                                  {option.label}
+                                </button>
+                              ))}
+                            </div>
+                            <input
+                              className={`${inputClass} py-2 text-right tabular-nums`}
+                              type="number"
+                              min="0.01"
+                              step="0.01"
+                              aria-label={`Payment ${index + 1} amount`}
+                              value={row.amount}
+                              onChange={(event) => updateSplit(row.id, { amount: event.target.value })}
+                            />
+                          </div>
+                          {row.method !== 'cash' ? (
+                            <input
+                              className={`${inputClass} mt-2`}
+                              value={row.reference}
+                              onChange={(event) => updateSplit(row.id, { reference: event.target.value })}
+                              placeholder="Reference / Transaction ID"
+                              aria-label={`Payment ${index + 1} reference`}
+                            />
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="space-y-1.5 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted">Total Paid</span>
+                        <span className="tabular-nums">{formatBillMoney(splitTotal)}</span>
+                      </div>
+                      <div className="flex justify-between font-medium">
+                        <span>Remaining</span>
+                        <span className={`tabular-nums ${splitRemaining ? 'text-rose-800' : 'text-forest'}`}>{formatBillMoney(splitRemaining)}</span>
+                      </div>
+                    </div>
+                    {splitRemaining > 0 ? (
+                      <Button
+                        variant="secondary"
+                        className="w-full"
+                        onClick={() => setSplits((current) => [...current, newSplitRow(String(splitRemaining))])}
+                      >
+                        Add Another Payment
+                      </Button>
+                    ) : null}
+                    <Button className="w-full bg-forest hover:bg-forest-deep" disabled={collecting || emptyOrders || splitTotal <= 0} onClick={submitSplits}>
+                      {collecting ? 'Recording...' : splitRemaining === 0 ? 'Settle Bill' : 'Record Payments'}
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </SectionCard>
+        </div>
       </div>
 
       {balance.remaining > 0 ? (
-        <div className="sticky bottom-3 z-10 rounded-2xl border border-line bg-card/95 p-3 shadow-lg backdrop-blur xl:hidden">
+        <div className="sticky bottom-3 z-10 rounded-[20px] border border-line bg-card/95 p-3 shadow-lg backdrop-blur xl:hidden">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-[11px] uppercase tracking-[0.12em] text-muted">Amount Due</p>
               <p className="font-display text-2xl leading-none tabular-nums">{formatBillMoney(balance.remaining)}</p>
             </div>
-            <Button className="bg-forest hover:bg-forest-deep" disabled={collecting || emptyOrders} onClick={() => document.querySelector('[aria-label="Payment mode"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+            <Button
+              className="bg-forest hover:bg-forest-deep"
+              disabled={collecting || emptyOrders}
+              onClick={() => document.getElementById('collect-payment')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+            >
               Collect
             </Button>
           </div>
@@ -809,7 +921,7 @@ export default function BillWorkspace({
 
       {confirmSettle ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-md rounded-2xl border border-line bg-card p-5 shadow-lg">
+          <div className="w-full max-w-md rounded-[20px] border border-line bg-card p-5 shadow-lg">
             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Confirm settlement</p>
             <h2 className="mt-2 font-display text-2xl">Settle this bill?</h2>
             <p className="mt-2 text-sm text-muted">

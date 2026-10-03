@@ -61,3 +61,40 @@ select {
   -webkit-appearance: none;
   appearance: none;
 }
+
+.bill-workspace-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-areas:
+    "orders"
+    "bill"
+    "adjust"
+    "pay"
+    "history";
+}
+
+.bill-workspace-grid > .area-orders { grid-area: orders; }
+.bill-workspace-grid > .area-bill { grid-area: bill; }
+.bill-workspace-grid > .area-adjust { grid-area: adjust; }
+.bill-workspace-grid > .area-pay { grid-area: pay; }
+.bill-workspace-grid > .area-history { grid-area: history; }
+
+@media (min-width: 1024px) {
+  .bill-workspace-grid {
+    grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+    grid-template-areas:
+      "orders bill"
+      "orders pay"
+      "adjust history";
+  }
+}
+
+@media (min-width: 1280px) {
+  .bill-workspace-grid {
+    grid-template-columns: minmax(0, 1.18fr) minmax(20rem, 0.96fr) minmax(18rem, 0.82fr);
+    grid-template-areas:
+      "orders bill adjust"
+      "orders pay history"
+      "orders pay history";
+  }
+}
