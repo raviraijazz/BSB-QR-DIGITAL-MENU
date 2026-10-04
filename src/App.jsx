@@ -20,7 +20,6 @@ const Menu = lazy(() => import('./pages/dashboard/Menu'))
 const Qr = lazy(() => import('./pages/dashboard/Qr'))
 const Tables = lazy(() => import('./pages/dashboard/Tables'))
 const TableWiseHome = lazy(() => import('./pages/dashboard/tableWise/TableWiseHome'))
-const TableWiseModule = lazy(() => import('./pages/dashboard/tableWise/TableWiseModule'))
 const Waiters = lazy(() => import('./pages/dashboard/tableWise/Waiters'))
 const Settings = lazy(() => import('./pages/dashboard/Settings'))
 const WaiterLogin = lazy(() => import('./pages/waiter/WaiterLogin'))
@@ -32,6 +31,7 @@ const LiveOrders = lazy(() => import('./pages/dashboard/tableWise/LiveOrders'))
 const Kitchen = lazy(() => import('./pages/dashboard/tableWise/Kitchen'))
 const RunningBills = lazy(() => import('./pages/dashboard/tableWise/RunningBills'))
 const Collections = lazy(() => import('./pages/dashboard/tableWise/Collections'))
+const OrderHistory = lazy(() => import('./pages/dashboard/tableWise/OrderHistory'))
 
 export default function App() {
   return (
@@ -64,7 +64,7 @@ export default function App() {
                 <Route path="table-wise/bills" element={<RunningBills />} />
                 <Route path="table-wise/collections" element={<Collections />} />
                 <Route path="table-wise/waiters" element={<Waiters />} />
-                <Route path="table-wise/history" element={<TableWiseModule />} />
+                <Route path="table-wise/history" element={<OrderHistory />} />
                 <Route path="qr" element={<Qr />} />
                 <Route path="settings" element={<Settings />} />
               </Route>

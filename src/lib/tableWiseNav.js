@@ -54,10 +54,8 @@ export const TABLE_WISE_MODULES = [
     to: '/dashboard/table-wise/history',
     label: 'Order History',
     icon: 'history',
-    lines: ['View completed/historical sessions and orders'],
-    ready: false,
-    title: 'Order History',
-    body: 'Completed sessions, orders and payment history will appear here.',
+    lines: ['Search past orders, KOTs and sessions', 'Review stored bills and payments', 'Export CSV and Excel'],
+    ready: true,
   },
 ]
 
