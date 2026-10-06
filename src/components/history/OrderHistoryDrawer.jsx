@@ -1,47 +1,235 @@
 import { useEffect, useState } from 'react'
-import Alert from '../Alert'
-import Button from '../Button'
 import {
   billSnapshotRows,
+  formatHistoryClock,
+  formatHistoryDate,
+  formatHistoryDateTime,
   historyStatusLabel,
   historyTimeline,
+  historyWaiterName,
   itemVariant,
   paymentStateLabel,
+  sessionStatusLabel,
   statusTone,
 } from '../../lib/orderHistory'
-import {
-  billStatusLabel,
-  formatBillMoney,
-  formatClock,
-  formatQty,
-  kotStatusLabel,
-  kotTypeLabel,
-  orderStatusLabel,
-  paymentMethodLabel,
-} from '../../lib/orderCart'
-import { formatReportDate, formatReportDateTime } from '../../lib/reportDates'
-import { sessionTablesLabel, tableHeading } from '../../lib/tableToken'
-import { waiterLabel } from '../../services/bills'
+import { formatBillMoney, formatQty, kotStatusLabel, kotTypeLabel, paymentMethodLabel } from '../../lib/orderCart'
+import { tableHeading, uniqueTables } from '../../lib/tableToken'
+import NavIcon from '../NavIcon'
 
 const TABS = [
-  { id: 'order', label: 'Order' },
+  { id: 'order', label: 'Order Details' },
+  { id: 'kots', label: 'KOTs' },
+  { id: 'bill', label: 'Bill & Payment' },
   { id: 'timeline', label: 'Timeline' },
 ]
 
-function Row({ label, value, strong = false }) {
+function hashNum(value) {
+  const text = String(value || '').replace(/^#/, '')
+  return text ? `#${text}` : '—'
+}
+
+function Badge({ status, label }) {
+  return <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${statusTone(status)}`}>{label}</span>
+}
+
+function Row({ label, value, strong = false, danger = false }) {
   return (
-    <div className={`flex items-baseline justify-between gap-3 text-sm ${strong ? 'font-medium text-ink' : ''}`}>
-      <span className="text-muted">{label}</span>
+    <div className={`flex items-baseline justify-between gap-3 text-sm ${strong ? 'font-semibold text-ink' : ''} ${danger ? 'font-medium text-rose-600' : ''}`}>
+      <span className={danger ? 'text-rose-600' : strong ? 'text-ink' : 'text-muted'}>{label}</span>
       <span className="tabular-nums">{value}</span>
     </div>
   )
 }
 
-function Badge({ status, label }) {
-  return <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusTone(status)}`}>{label}</span>
+function Card({ title, action, children, className = '' }) {
+  return (
+    <section className={`rounded-[16px] border border-line bg-white p-4 ${className}`}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="text-[15px] font-semibold">{title}</h3>
+        {action}
+      </div>
+      {children}
+    </section>
+  )
 }
 
-export default function OrderHistoryDrawer({ open, row, restaurant, onClose }) {
+function OrderItems({ row }) {
+  const items = row.order.order_items || []
+  return (
+    <Card title="Order Items" action={<span className="text-[12px] text-muted">{formatQty(row.itemCount)} items</span>}>
+      {items.length ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[28rem] text-sm">
+            <thead>
+              <tr className="text-left text-[11px] text-muted">
+                <th className="pb-2 font-medium">Item</th>
+                <th className="pb-2 font-medium">Variant</th>
+                <th className="pb-2 font-medium">Qty</th>
+                <th className="pb-2 text-right font-medium">Unit Price</th>
+                <th className="pb-2 text-right font-medium">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.id} className="border-t border-line">
+                  <td className="py-2 font-medium">{item.item_name}</td>
+                  <td className="py-2 text-muted">{itemVariant(item) || '—'}</td>
+                  <td className="py-2 tabular-nums">{formatQty(item.quantity)}</td>
+                  <td className="py-2 text-right tabular-nums">{formatBillMoney(item.unit_price)}</td>
+                  <td className="py-2 text-right font-medium tabular-nums">{formatBillMoney(item.line_total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="text-sm text-muted">No items</p>
+      )}
+      <div className="mt-3 flex justify-between border-t border-line pt-3 text-sm font-semibold">
+        <span>Subtotal</span>
+        <span className="tabular-nums">{formatBillMoney(row.subtotal)}</span>
+      </div>
+    </Card>
+  )
+}
+
+function KotCard({ kot, restaurant }) {
+  return (
+    <article className="rounded-[14px] border border-line bg-paper/50 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-semibold">KOT {hashNum(kot.kot_number)}</p>
+          <span className="rounded-md bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800">
+            {kotTypeLabel(kot.kot_type)}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-muted">Created: {formatHistoryClock(kot.created_at, restaurant)}</span>
+          <Badge status={kot.status} label={kotStatusLabel(kot.status)} />
+        </div>
+      </div>
+      {(kot.kot_items || []).length ? (
+        <table className="mt-3 w-full text-sm">
+          <thead>
+            <tr className="text-left text-[11px] text-muted">
+              <th className="pb-1 font-medium">Item</th>
+              <th className="pb-1 text-right font-medium">Qty</th>
+              <th className="pb-1 text-right font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(kot.kot_items || []).map((item) => (
+              <tr key={item.id} className="border-t border-line/80">
+                <td className="py-1.5">
+                  {item.item_name}
+                  {item.notes ? <span className="mt-0.5 block text-[11px] text-muted">{item.notes}</span> : null}
+                </td>
+                <td className="py-1.5 text-right tabular-nums">{formatQty(item.quantity)}</td>
+                <td className="py-1.5 text-right">
+                  <Badge status={kot.status} label={kotStatusLabel(kot.status)} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="mt-2 text-sm text-muted">No kitchen items</p>
+      )}
+    </article>
+  )
+}
+
+function SessionCard({ row, restaurant }) {
+  const tables = uniqueTables(row.sessionTables?.length ? row.sessionTables : row.sourceTable ? [row.sourceTable] : [])
+  return (
+    <Card
+      title="Session Information"
+      action={row.session ? <Badge status={row.session.status === 'closed' ? 'completed' : 'open'} label={sessionStatusLabel(row.session.status)} /> : null}
+    >
+      <p className="mb-3 font-medium">Session {hashNum(row.session?.session_number)}</p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2 text-sm">
+          <div>
+            <p className="text-[11px] text-muted">Started</p>
+            <p>{formatHistoryDateTime(row.session?.started_at, restaurant)}</p>
+          </div>
+          <div>
+            <p className="text-[11px] text-muted">Closed</p>
+            <p>{row.session?.closed_at ? formatHistoryDateTime(row.session.closed_at, restaurant) : 'Open'}</p>
+          </div>
+          <div>
+            <p className="text-[11px] text-muted">Waiter</p>
+            <p>{historyWaiterName(row.waiter)}</p>
+          </div>
+          <div>
+            <p className="text-[11px] text-muted">Order Type</p>
+            <p>{row.orderType}</p>
+          </div>
+        </div>
+        <div className="rounded-xl bg-sky-50 px-3 py-3 text-sm">
+          <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-sky-800">Tables in Session</p>
+          <ul className="mt-2 space-y-1 font-medium text-ink">
+            {tables.length ? tables.map((table) => <li key={table.id}>{tableHeading(table)}</li>) : <li>{row.tableLabel}</li>}
+          </ul>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function SummaryCards({ row, snapshot, restaurant }) {
+  return (
+    <div className="space-y-3">
+      <Card title="Order Summary">
+        <div className="space-y-1.5">
+          <Row label={`Subtotal (${formatQty(row.itemCount)} items)`} value={formatBillMoney(snapshot.subtotal || row.subtotal)} />
+          <Row label="Discount" value={snapshot.discount ? `− ${formatBillMoney(snapshot.discount)}` : formatBillMoney(0)} />
+          <Row label="Taxable Value" value={formatBillMoney(snapshot.taxable || row.subtotal)} />
+          <Row label={snapshot.taxLabel || 'Tax'} value={formatBillMoney(snapshot.tax)} />
+          <Row label="Service Charge" value={formatBillMoney(snapshot.service)} />
+          <div className="border-t border-line pt-2">
+            <Row label="Grand Total" value={formatBillMoney(snapshot.payable || row.subtotal)} strong />
+          </div>
+        </div>
+      </Card>
+      <Card title="Payment Information" action={<Badge status={row.paymentState} label={paymentStateLabel(row.paymentState)} />}>
+        <div className="space-y-1.5">
+          <Row label="Paid Amount" value={formatBillMoney(snapshot.paid)} />
+          <Row label="Remaining" value={formatBillMoney(snapshot.remaining || (row.bill ? row.remaining : row.subtotal))} danger={(snapshot.remaining || 0) > 0} />
+        </div>
+      </Card>
+      <Card title={`Payment History (${row.payments.length})`}>
+        {row.payments.length ? (
+          <ul className="space-y-2 text-sm">
+            {row.payments.map((payment) => (
+              <li key={payment.id} className="flex items-start justify-between gap-3">
+                <span>
+                  <span className="font-medium">{paymentMethodLabel(payment.payment_method)}</span>
+                  <span className="mt-0.5 block text-[11px] text-muted">
+                    {formatHistoryDateTime(payment.paid_at || payment.created_at, restaurant)}
+                    {payment.payment_reference ? ` · ${payment.payment_reference}` : ''}
+                  </span>
+                </span>
+                <span className="tabular-nums">{formatBillMoney(payment.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted">No payments yet</p>
+        )}
+        <div className="mt-3 flex justify-between rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+          <span>Total Paid</span>
+          <span className="tabular-nums">{formatBillMoney(snapshot.paid)}</span>
+        </div>
+      </Card>
+      <Card title="Order Notes">
+        <p className="text-sm text-muted">{row.order.notes || 'No notes for this order'}</p>
+      </Card>
+    </div>
+  )
+}
+
+export default function OrderHistoryDrawer({ row, restaurant, onClose, mobile = false }) {
   const [tab, setTab] = useState('order')
 
   useEffect(() => {
@@ -49,210 +237,177 @@ export default function OrderHistoryDrawer({ open, row, restaurant, onClose }) {
     function onKey(event) {
       if (event.key === 'Escape') onClose?.()
     }
-    if (!open) return undefined
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, row?.order?.id, onClose])
+  }, [row?.order?.id, onClose])
 
-  if (!open || !row) return null
+  if (!row) return null
 
   const snapshot = billSnapshotRows(row.bill, row.payments)
-  const waiter = waiterLabel(row.waiter)
-  const tables = row.sessionTables?.length
-    ? sessionTablesLabel(row.sessionTables, { compact: true })
-    : row.sourceTable
-      ? tableHeading(row.sourceTable)
-      : row.tableLabel
+  const tables = uniqueTables(row.sessionTables?.length ? row.sessionTables : row.sourceTable ? [row.sourceTable] : [])
+  const tableLine = tables.length
+    ? tables.map((table) => tableHeading(table)).join(' • ')
+    : row.tableHeadingLabel || row.tableLabel
   const timeline = historyTimeline(row)
+  const kotLabel = `KOTs (${row.kots.length})`
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <button type="button" aria-label="Close order detail" className="absolute inset-0 bg-ink/30" onClick={onClose} />
-      <aside className="relative z-10 flex h-full w-full max-w-lg flex-col overflow-hidden border-l border-line bg-card shadow-xl">
-        <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
-          <div className="min-w-0">
-            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Order history</p>
-            <h2 className="mt-1 font-display text-2xl">Order #{row.order.order_number}</h2>
-            <p className="mt-1 text-sm text-muted">
-              {restaurant?.name || 'Restaurant'} · {formatReportDateTime(row.order.created_at)}
-            </p>
+    <aside className={`flex h-full min-h-0 flex-col overflow-hidden border-line bg-card ${mobile ? 'h-full' : 'rounded-[18px] border shadow-sm'}`}>
+      <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="font-display text-2xl leading-none">Order {hashNum(row.order.order_number)}</h2>
+            <Badge status={row.status} label={historyStatusLabel(row.status)} />
           </div>
-          <Button variant="secondary" className="shrink-0" onClick={onClose}>
-            Close
-          </Button>
+          <p className="mt-2 text-sm text-muted">
+            {formatHistoryDate(row.order.created_at, restaurant)} · {formatHistoryClock(row.order.created_at, restaurant)} · {tableLine}
+          </p>
+          <p className="mt-1 text-sm text-muted">
+            {restaurant?.name || 'Restaurant'} · Session {hashNum(row.session?.session_number)} · Waiter: {historyWaiterName(row.waiter)} · {row.orderType}
+          </p>
         </div>
+        <button type="button" aria-label="Close order detail" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted hover:bg-paper" onClick={onClose}>
+          <NavIcon name="close" className="h-4 w-4" />
+        </button>
+      </div>
 
-        <div className="flex gap-1 border-b border-line px-5 py-2">
-          {TABS.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => setTab(option.id)}
-              className={`rounded-full px-3 py-1 text-[12px] font-medium ${
-                tab === option.id ? 'bg-forest text-[#f5ead8]' : 'border border-line bg-white text-muted'
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-wrap gap-2 border-b border-line px-5 py-3">
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-white px-3 py-1.5 text-[12px] font-medium"
+          onClick={() => setTab('bill')}
+        >
+          View Bill
+        </button>
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-white px-3 py-1.5 text-[12px] font-medium"
+          onClick={() => setTab('order')}
+        >
+          View Session
+        </button>
+      </div>
 
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5">
-          {tab === 'timeline' ? (
-            timeline.length ? (
-              <ol className="space-y-3">
-                {timeline.map((event) => (
-                  <li key={event.id} className="flex gap-3 text-sm">
-                    <span className="w-16 shrink-0 pt-0.5 text-xs tabular-nums text-muted">{formatClock(event.at)}</span>
-                    <span className="min-w-0 border-l border-line pl-3">
-                      <span className="block font-medium">{event.title}</span>
-                      {event.detail ? <span className="block text-xs text-muted">{event.detail}</span> : null}
-                      <span className="block text-xs text-muted">{formatReportDate(event.at)}</span>
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className="text-sm text-muted">No recorded events for this order.</p>
-            )
+      <div className="flex gap-4 overflow-x-auto border-b border-line px-5">
+        {TABS.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => setTab(option.id)}
+            className={`whitespace-nowrap py-3 text-[13px] font-medium ${
+              tab === option.id ? 'border-b-2 border-forest text-forest' : 'text-muted'
+            }`}
+          >
+            {option.id === 'kots' ? kotLabel : option.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+        {tab === 'order' ? (
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(16rem,0.85fr)]">
+            <div className="space-y-4">
+              <OrderItems row={row} />
+              {row.kots[0] ? (
+                <Card title="KOT Information">
+                  <KotCard kot={row.kots[0]} restaurant={restaurant} />
+                </Card>
+              ) : (
+                <Card title="KOT Information">
+                  <p className="text-sm text-muted">No kitchen tickets</p>
+                </Card>
+              )}
+              <SessionCard row={row} restaurant={restaurant} />
+            </div>
+            <SummaryCards row={row} snapshot={snapshot} restaurant={restaurant} />
+          </div>
+        ) : null}
+
+        {tab === 'kots' ? (
+          row.kots.length ? (
+            <div className="space-y-3">
+              {row.kots.map((kot) => (
+                <KotCard key={kot.id} kot={kot} restaurant={restaurant} />
+              ))}
+            </div>
           ) : (
-            <>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge status={row.status} label={historyStatusLabel(row.status)} />
-                <Badge status={row.order.status} label={orderStatusLabel(row.order.status)} />
-                {row.order.status === 'cancelled' ? <Badge status="cancelled" label="Cancelled" /> : null}
-              </div>
+            <p className="text-sm text-muted">No kitchen tickets</p>
+          )
+        ) : null}
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-line bg-paper/70 px-4 py-3 text-sm">
-                  <p className="text-[11px] uppercase tracking-[0.12em] text-muted">Table</p>
-                  <p className="mt-1 font-medium">{tables}</p>
-                  <p className="mt-0.5 text-xs text-muted">{row.orderType}</p>
-                </div>
-                <div className="rounded-2xl border border-line bg-paper/70 px-4 py-3 text-sm">
-                  <p className="text-[11px] uppercase tracking-[0.12em] text-muted">Waiter</p>
-                  <p className="mt-1 font-medium">{waiter}</p>
-                </div>
-              </div>
-
-              <section className="rounded-2xl border border-line bg-white px-4 py-3">
-                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Session</p>
-                <div className="mt-2 space-y-1.5">
-                  <Row label="Session" value={row.session?.session_number || '—'} />
-                  <Row label="Started" value={formatReportDateTime(row.session?.started_at)} />
-                  <Row label="Ended" value={row.session?.closed_at ? formatReportDateTime(row.session.closed_at) : 'Open'} />
-                  <Row label="Tables" value={tables} />
-                </div>
-              </section>
-
-              <section className="rounded-2xl border border-line bg-white px-4 py-3">
-                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Order items</p>
-                {(row.order.order_items || []).length ? (
-                  <ul className="mt-3 space-y-2 text-sm">
-                    {(row.order.order_items || []).map((item) => (
-                      <li key={item.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 border-b border-line pb-2 last:border-b-0 last:pb-0">
-                        <span>
-                          <span className="font-medium">{item.item_name}</span>
-                          {itemVariant(item) ? <span className="mt-0.5 block text-xs text-muted">{itemVariant(item)}</span> : null}
-                          {item.notes ? <span className="mt-0.5 block text-xs text-muted">{item.notes}</span> : null}
-                          <span className="mt-0.5 block text-xs text-muted">
-                            {formatQty(item.quantity)} × {formatBillMoney(item.unit_price)}
-                          </span>
-                        </span>
-                        <span className="tabular-nums">{formatBillMoney(item.line_total)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-sm text-muted">No items</p>
-                )}
-                <div className="mt-3 flex justify-between text-sm font-medium">
-                  <span>Subtotal</span>
-                  <span className="tabular-nums">{formatBillMoney(row.subtotal)}</span>
-                </div>
-              </section>
-
-              <section className="rounded-2xl border border-line bg-white px-4 py-3">
-                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">KOT</p>
-                {row.kots.length ? (
-                  <div className="mt-3 space-y-3">
-                    {row.kots.map((kot) => (
-                      <article key={kot.id} className="rounded-xl border border-line bg-paper/60 px-3 py-2">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-medium">KOT #{kot.kot_number}</p>
-                            <p className="text-xs text-muted">
-                              {kotTypeLabel(kot.kot_type)} · {formatReportDateTime(kot.created_at)}
-                            </p>
-                          </div>
-                          <Badge status={kot.status} label={kotStatusLabel(kot.status)} />
-                        </div>
-                        <ul className="mt-2 space-y-1 text-sm">
-                          {(kot.kot_items || []).map((item) => (
-                            <li key={item.id} className="flex justify-between gap-3">
-                              <span>{item.item_name}</span>
-                              <span className="tabular-nums text-muted">×{formatQty(item.quantity)}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-2 text-sm text-muted">No kitchen tickets</p>
-                )}
-              </section>
-
-              <section className="rounded-2xl border border-line bg-white px-4 py-3">
-                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Bill</p>
-                {row.bill ? (
-                  <div className="mt-3 space-y-1.5">
-                    <div className="mb-2 flex items-center justify-between">
-                      <p className="font-medium">{row.bill.bill_number || 'Bill'}</p>
-                      <Badge status={row.bill.status} label={billStatusLabel(row.bill.status)} />
-                    </div>
-                    <Row label="Subtotal" value={formatBillMoney(snapshot.subtotal)} />
-                    <Row label="Discount" value={snapshot.discount ? `-${formatBillMoney(snapshot.discount)}` : 'None'} />
-                    <Row label="Taxable Value" value={formatBillMoney(snapshot.taxable)} />
-                    <Row label="Tax" value={snapshot.tax ? formatBillMoney(snapshot.tax) : 'None'} />
-                    <Row label="Service Charge" value={snapshot.service ? formatBillMoney(snapshot.service) : 'None'} />
+        {tab === 'bill' ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card title="Bill Summary">
+              {row.bill ? (
+                <div className="space-y-1.5">
+                  <p className="mb-2 text-sm font-medium">{row.bill.bill_number ? `Bill ${hashNum(row.bill.bill_number)}` : 'Bill'}</p>
+                  <Row label="Subtotal" value={formatBillMoney(snapshot.subtotal)} />
+                  <Row label="Discount" value={snapshot.discount ? `− ${formatBillMoney(snapshot.discount)}` : 'None'} />
+                  <Row label="Taxable Value" value={formatBillMoney(snapshot.taxable)} />
+                  <Row label={snapshot.taxLabel || 'Tax'} value={snapshot.tax ? formatBillMoney(snapshot.tax) : 'None'} />
+                  <Row label="Service Charge" value={snapshot.service ? formatBillMoney(snapshot.service) : 'None'} />
+                  <div className="border-t border-line pt-2">
                     <Row label="Grand Total" value={formatBillMoney(snapshot.payable)} strong />
-                    <Row label="Paid" value={formatBillMoney(snapshot.paid)} />
-                    <Row label="Remaining" value={formatBillMoney(snapshot.remaining)} />
-                    <Alert type="info">Historical bill totals are shown as stored. They are not recalculated.</Alert>
                   </div>
-                ) : (
-                  <p className="mt-2 text-sm text-muted">No bill yet</p>
-                )}
-              </section>
-
-              <section className="rounded-2xl border border-line bg-white px-4 py-3">
-                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Payments</p>
+                  <p className="pt-2 text-[11px] text-muted">Historical bill totals are shown as stored. They are not recalculated.</p>
+                </div>
+              ) : (
+                <p className="text-sm text-muted">No bill yet</p>
+              )}
+            </Card>
+            <div className="space-y-4">
+              <Card title="Payment Information" action={<Badge status={row.paymentState} label={paymentStateLabel(row.paymentState)} />}>
+                <div className="space-y-1.5">
+                  <Row label="Paid Amount" value={formatBillMoney(snapshot.paid)} />
+                  <Row label="Remaining" value={formatBillMoney(row.bill ? snapshot.remaining : row.subtotal)} danger={(row.bill ? snapshot.remaining : row.subtotal) > 0} />
+                  <Row label="Bill Status" value={row.bill ? paymentStateLabel(row.paymentState) : 'Unpaid'} />
+                </div>
+              </Card>
+              <Card title="Payment History">
                 {row.payments.length ? (
-                  <ul className="mt-3 space-y-2 text-sm">
+                  <ul className="space-y-2 text-sm">
                     {row.payments.map((payment) => (
                       <li key={payment.id} className="flex justify-between gap-3">
                         <span>
                           <span className="font-medium">{paymentMethodLabel(payment.payment_method)}</span>
-                          <span className="mt-0.5 block text-xs text-muted">{formatReportDateTime(payment.paid_at || payment.created_at)}</span>
-                          {payment.payment_reference ? <span className="block text-xs text-muted">{payment.payment_reference}</span> : null}
+                          <span className="mt-0.5 block text-[11px] text-muted">{formatHistoryDateTime(payment.paid_at || payment.created_at, restaurant)}</span>
+                          {payment.payment_reference ? <span className="block text-[11px] text-muted">{payment.payment_reference}</span> : null}
                         </span>
                         <span className="tabular-nums">{formatBillMoney(payment.amount)}</span>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="mt-2 text-sm text-muted">No payments yet</p>
+                  <p className="text-sm text-muted">No payments yet</p>
                 )}
-                <div className="mt-3 flex justify-between border-t border-line pt-3 text-sm font-medium">
-                  <span>{paymentStateLabel(row.paymentState)}</span>
-                  <span className="tabular-nums">{formatBillMoney(row.paid)}</span>
+                <div className="mt-3 flex justify-between rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+                  <span>Total Paid</span>
+                  <span className="tabular-nums">{formatBillMoney(snapshot.paid)}</span>
                 </div>
-              </section>
-            </>
-          )}
-        </div>
-      </aside>
-    </div>
+              </Card>
+            </div>
+          </div>
+        ) : null}
+
+        {tab === 'timeline' ? (
+          timeline.length ? (
+            <ol className="space-y-3">
+              {timeline.map((event) => (
+                <li key={event.id} className="flex gap-3 text-sm">
+                  <span className="w-[4.5rem] shrink-0 pt-0.5 text-xs tabular-nums text-muted">{formatHistoryClock(event.at, restaurant)}</span>
+                  <span className="min-w-0 border-l border-line pl-3">
+                    <span className="block font-medium">{event.title}</span>
+                    {event.detail ? <span className="block text-xs text-muted">{event.detail}</span> : null}
+                    <span className="block text-xs text-muted">{formatHistoryDate(event.at, restaurant)}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="text-sm text-muted">No recorded events for this order.</p>
+          )
+        ) : null}
+      </div>
+    </aside>
   )
 }

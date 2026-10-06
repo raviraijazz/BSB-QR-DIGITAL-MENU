@@ -68,14 +68,21 @@ async function resolveSearchIds(restaurantId, search) {
   }
 }
 
-function applyQuickIds(query, filters, extra) {
+function applyHistoryFilters(query, filters, extra) {
   let next = query
   if (filters.orderStatus) next = next.eq('status', filters.orderStatus)
   if (filters.waiterId) next = next.eq('waiter_id', filters.waiterId)
   if (filters.sessionId) next = next.eq('session_id', filters.sessionId)
-  if (extra.orderIds?.length) next = next.in('id', extra.orderIds)
-  if (extra.sessionIds?.length) next = next.in('session_id', extra.sessionIds)
-  if (extra.waiterIds?.length && !filters.waiterId) next = next.in('waiter_id', extra.waiterIds)
+  if (extra.filterOrderIds) next = next.in('id', extra.filterOrderIds)
+  if (extra.filterSessionIds) next = next.in('session_id', extra.filterSessionIds)
+  const search = extra.searchOr
+  if (search) {
+    const parts = []
+    if (search.orderIds.length) parts.push(`id.in.(${search.orderIds.join(',')})`)
+    if (search.sessionIds.length) parts.push(`session_id.in.(${search.sessionIds.join(',')})`)
+    if (search.waiterIds.length && !filters.waiterId) parts.push(`waiter_id.in.(${search.waiterIds.join(',')})`)
+    if (parts.length) next = next.or(parts.join(','))
+  }
   return next
 }
 
@@ -89,22 +96,20 @@ export async function listOrderHistory({
 } = {}) {
   if (!restaurantId) return { data: [], count: 0, bills: [], payments: [], error: null }
 
-  const extra = { orderIds: null, sessionIds: null, waiterIds: null }
+  const extra = { filterOrderIds: null, filterSessionIds: null, searchOr: null }
   const search = String(filters.search || '').trim()
   if (search) {
     const found = await resolveSearchIds(restaurantId, search)
-    extra.orderIds = found.orderIds
-    extra.sessionIds = found.sessionIds
-    extra.waiterIds = found.waiterIds
     if (!found.orderIds.length && !found.sessionIds.length && !found.waiterIds.length) {
       return { data: [], count: 0, bills: [], payments: [], error: null }
     }
+    extra.searchOr = found
   }
 
   if (filters.tableId) {
     const tableSessions = await sessionIdsForTable(restaurantId, filters.tableId)
-    extra.sessionIds = extra.sessionIds ? extra.sessionIds.filter((id) => tableSessions.includes(id)) : tableSessions
-    if (filters.sessionId && !tableSessions.includes(filters.sessionId)) {
+    extra.filterSessionIds = tableSessions
+    if (!tableSessions.length || (filters.sessionId && !tableSessions.includes(filters.sessionId))) {
       return { data: [], count: 0, bills: [], payments: [], error: null }
     }
   }
@@ -112,8 +117,8 @@ export async function listOrderHistory({
   if (filters.kotStatus) {
     const kots = await supabase.from('kots').select('order_id').eq('restaurant_id', restaurantId).eq('status', filters.kotStatus)
     const ids = uniqueIds((kots.data || []).map((row) => row.order_id))
-    extra.orderIds = extra.orderIds ? extra.orderIds.filter((id) => ids.includes(id)) : ids
-    if (!ids.length || extra.orderIds.length === 0) return { data: [], count: 0, bills: [], payments: [], error: null }
+    extra.filterOrderIds = ids
+    if (!ids.length) return { data: [], count: 0, bills: [], payments: [], error: null }
   }
 
   if (filters.billStatus || filters.paymentState || filters.paymentMethod) {
@@ -130,8 +135,12 @@ export async function listOrderHistory({
       const paySessions = uniqueIds((pays.data || []).map((row) => row.session_id))
       sessionIds = sessionIds.filter((id) => paySessions.includes(id))
     }
-    extra.sessionIds = extra.sessionIds ? extra.sessionIds.filter((id) => sessionIds.includes(id)) : sessionIds
-    if (!sessionIds.length || extra.sessionIds.length === 0) return { data: [], count: 0, bills: [], payments: [], error: null }
+    extra.filterSessionIds = extra.filterSessionIds
+      ? extra.filterSessionIds.filter((id) => sessionIds.includes(id))
+      : sessionIds
+    if (!sessionIds.length || extra.filterSessionIds.length === 0) {
+      return { data: [], count: 0, bills: [], payments: [], error: null }
+    }
   }
 
   const from = Math.max(0, Number(page) || 0) * pageSize
@@ -146,7 +155,7 @@ export async function listOrderHistory({
       .lt('created_at', toISO)
       .order('created_at', { ascending: false })
       .range(from, to)
-    return applyQuickIds(query, filters, extra)
+    return applyHistoryFilters(query, filters, extra)
   }
 
   let result = await baseQuery(ORDER_FULL)

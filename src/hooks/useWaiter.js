@@ -1,4 +1,5 @@
 import { createContext, createElement, useContext, useEffect, useMemo, useState } from 'react'
+import { loadRestaurantRuntime } from '../services/restaurantSettings'
 import { getMyWaiter, getWaiterRestaurant, listMyAssignedTables } from '../services/waiterAuth'
 import { useAuth } from './useAuth'
 
@@ -47,8 +48,10 @@ export function WaiterProvider({ children }) {
         listMyAssignedTables(nextWaiter.restaurant_id, nextWaiter.id),
       ])
       if (!active) return
+      const runtime = await loadRestaurantRuntime(restaurantResult.data)
+      if (!active) return
       setWaiter(nextWaiter)
-      setRestaurant(restaurantResult.data)
+      setRestaurant(runtime.data || restaurantResult.data)
       setTables(tablesResult.data ?? [])
       setError(restaurantResult.error?.message || tablesResult.error?.message || '')
       setLoading(false)

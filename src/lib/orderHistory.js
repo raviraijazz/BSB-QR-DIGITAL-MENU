@@ -1,10 +1,10 @@
-import { firstRelated, kotStatusLabel, kotTypeLabel, moneyRound, orderStatusLabel, paymentMethodLabel, paymentsTotal, remainingBalance } from './orderCart'
-import { sessionTablesLabel, tableHeading } from './tableToken'
+import { firstRelated, kotTypeLabel, moneyRound, paymentMethodLabel, paymentsTotal, remainingBalance } from './orderCart'
+import { compactTableLabel, sessionTablesLabel, tableHeading, uniqueTables } from './tableToken'
 import { tablesForSession } from '../services/tableMoves'
 import { orderSubtotal } from '../services/waiterOrders'
 import { buildRange } from './reportDates'
 
-export const HISTORY_PAGE_SIZE = 25
+export const HISTORY_PAGE_SIZE = 10
 export const HISTORY_EXPORT_LIMIT = 5000
 
 export const HISTORY_RANGE_PRESETS = [
@@ -12,7 +12,7 @@ export const HISTORY_RANGE_PRESETS = [
   { id: 'yesterday', label: 'Yesterday' },
   { id: 'week', label: 'This Week' },
   { id: 'month', label: 'This Month' },
-  { id: 'custom', label: 'Custom Range' },
+  { id: 'custom', label: 'Custom' },
 ]
 
 export const QUICK_FILTERS = [
@@ -45,21 +45,21 @@ export const KOT_STATUS_OPTIONS = [
 
 export const BILL_STATUS_OPTIONS = [
   { id: 'open', label: 'Open' },
-  { id: 'payment_pending', label: 'Partially paid' },
+  { id: 'payment_pending', label: 'Partially Paid' },
   { id: 'paid', label: 'Settled' },
   { id: 'cancelled', label: 'Voided' },
 ]
 
 export const PAYMENT_STATE_OPTIONS = [
   { id: 'unpaid', label: 'Unpaid' },
-  { id: 'partial', label: 'Partially paid' },
+  { id: 'partial', label: 'Partially Paid' },
   { id: 'paid', label: 'Paid' },
   { id: 'voided', label: 'Voided' },
 ]
 
 export const ORDER_TYPE_OPTIONS = [{ id: 'dine_in', label: 'Dine-in' }]
 
-function restaurantTimeZone(restaurant) {
+export function restaurantTimeZone(restaurant) {
   return String(restaurant?.timezone || restaurant?.time_zone || restaurant?.tz || '').trim()
 }
 
@@ -68,8 +68,7 @@ function pad(value) {
 }
 
 function wallParts(date, timeZone) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
+  const options = {
     hourCycle: 'h23',
     year: 'numeric',
     month: '2-digit',
@@ -77,7 +76,9 @@ function wallParts(date, timeZone) {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-  }).formatToParts(date)
+  }
+  if (timeZone) options.timeZone = timeZone
+  const parts = new Intl.DateTimeFormat('en-CA', options).formatToParts(date)
   const map = {}
   for (const part of parts) {
     if (part.type !== 'literal') map[part.type] = part.value
@@ -158,7 +159,7 @@ export function paymentState(bill, payments) {
 
 export function paymentStateLabel(state) {
   if (state === 'paid') return 'Paid'
-  if (state === 'partial') return 'Partially paid'
+  if (state === 'partial') return 'Partially Paid'
   if (state === 'voided') return 'Voided'
   return 'Unpaid'
 }
@@ -178,7 +179,7 @@ export function historyStatusLabel(status) {
   if (status === 'cancelled') return 'Cancelled'
   if (status === 'voided') return 'Voided'
   if (status === 'completed') return 'Completed'
-  if (status === 'partial') return 'Partially paid'
+  if (status === 'partial') return 'Partially Paid'
   if (status === 'ready') return 'Ready'
   if (status === 'preparing') return 'Preparing'
   if (status === 'paid') return 'Paid'
@@ -186,14 +187,120 @@ export function historyStatusLabel(status) {
 }
 
 export function statusTone(status) {
-  if (status === 'completed' || status === 'paid' || status === 'ready' || status === 'served') {
-    return 'border-emerald-200 bg-emerald-50 text-emerald-800'
+  if (status === 'unpaid' || status === 'cancelled' || status === 'voided') {
+    return 'bg-rose-50 text-rose-600'
   }
-  if (status === 'partial' || status === 'payment_pending' || status === 'preparing' || status === 'accepted') {
-    return 'border-amber-200 bg-amber-50 text-amber-900'
+  if (status === 'partial' || status === 'payment_pending') {
+    return 'bg-rose-50 text-rose-500'
   }
-  if (status === 'cancelled' || status === 'voided') return 'border-rose-200 bg-rose-50 text-rose-800'
-  return 'border-line bg-paper text-ink'
+  if (status === 'preparing' || status === 'accepted' || status === 'new') {
+    return 'bg-amber-50 text-amber-800'
+  }
+  return 'bg-emerald-50 text-emerald-700'
+}
+
+export function formatHistoryDate(value, restaurant) {
+  if (!value) return '—'
+  const timeZone = restaurantTimeZone(restaurant)
+  const options = { day: '2-digit', month: 'short', year: 'numeric' }
+  try {
+    return new Date(value).toLocaleDateString('en-GB', timeZone ? { ...options, timeZone } : options)
+  } catch {
+    try {
+      return new Date(value).toLocaleDateString('en-GB', options)
+    } catch {
+      return '—'
+    }
+  }
+}
+
+export function formatHistoryTime(value, restaurant) {
+  if (!value) return '—'
+  const timeZone = restaurantTimeZone(restaurant)
+  const options = { hour: 'numeric', minute: '2-digit' }
+  try {
+    return new Date(value).toLocaleTimeString('en-US', timeZone ? { ...options, timeZone } : options)
+  } catch {
+    try {
+      return new Date(value).toLocaleTimeString('en-US', options)
+    } catch {
+      return '—'
+    }
+  }
+}
+
+export function formatHistoryDateTime(value, restaurant) {
+  if (!value) return '—'
+  return `${formatHistoryDate(value, restaurant)} · ${formatHistoryTime(value, restaurant)}`
+}
+
+export function historyRangeLabel(range, restaurant) {
+  if (!range?.from || !range?.to) return ''
+  const last = new Date(range.to.getTime() - 1)
+  const from = formatHistoryDate(range.from, restaurant)
+  const to = formatHistoryDate(last, restaurant)
+  return from === to ? from : `${from} – ${to}`
+}
+
+export function historyDateKey(value, restaurant) {
+  const timeZone = restaurantTimeZone(restaurant)
+  try {
+    const parts = wallParts(new Date(value), timeZone)
+    if (parts.year && parts.month && parts.day) return `${parts.year}-${parts.month}-${parts.day}`
+  } catch {
+    /* local fallback */
+  }
+  return localDateKeyFallback(value)
+}
+
+function localDateKeyFallback(value) {
+  const date = new Date(value)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+export function formatHistoryClock(value, restaurant) {
+  return formatHistoryTime(value, restaurant)
+}
+
+export function historyWaiterName(waiter) {
+  return waiter?.full_name || waiter?.waiter_id || 'Waiter'
+}
+
+export function historyTableShort(sessionTables, sourceTable) {
+  const rows = uniqueTables(sessionTables?.length ? sessionTables : sourceTable ? [sourceTable] : [])
+  if (!rows.length) return 'Table'
+  return rows
+    .map((table) => {
+      const compact = compactTableLabel(table)
+      return /^table(\s|$)/i.test(compact) ? compact : `Table ${compact}`
+    })
+    .join(' + ')
+}
+
+export function sessionStatusLabel(status) {
+  const value = String(status || 'active')
+  if (value === 'closed') return 'Closed'
+  if (value === 'bill_requested') return 'Bill requested'
+  if (value === 'payment_pending') return 'Payment pending'
+  if (value === 'cancelled') return 'Cancelled'
+  return 'Open'
+}
+
+export function pageNumbers(page, pages) {
+  const total = Math.max(1, pages)
+  const current = Math.min(Math.max(1, page + 1), total)
+  if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1)
+  const items = [1]
+  const start = Math.max(2, current - 1)
+  const end = Math.min(total - 1, current + 1)
+  if (start > 2) items.push('…')
+  for (let n = start; n <= end; n += 1) items.push(n)
+  if (end < total - 1) items.push('…')
+  items.push(total)
+  return items
 }
 
 export function itemVariant(item) {
@@ -236,11 +343,12 @@ export function buildHistoryRow(order, tables, billsBySession, paymentsByBill) {
   const waiter = relatedOne(order.waiters) || null
   const sessionTables = tablesForSession(tables, session)
   const sourceTable = (tables || []).find((table) => table.id === order.source_table_id) || null
-  const tableLabel = sessionTables.length
-    ? sessionTablesLabel(sessionTables, { compact: true })
+  const tableLabel = historyTableShort(sessionTables, sourceTable)
+  const tableHeadingLabel = sessionTables.length
+    ? sessionTablesLabel(sessionTables)
     : sourceTable
       ? tableHeading(sourceTable)
-      : 'Table'
+      : tableLabel
   const bill = (session?.id && billsBySession?.[session.id]) || relatedOne(session?.bills) || null
   const payments = uniquePayments(bill?.id ? paymentsByBill?.[bill.id] || session?.payments || [] : [])
   const kots = orderKots(order)
@@ -254,6 +362,7 @@ export function buildHistoryRow(order, tables, billsBySession, paymentsByBill) {
     sessionTables,
     sourceTable,
     tableLabel,
+    tableHeadingLabel,
     bill,
     payments,
     kots,
@@ -276,6 +385,7 @@ export function billSnapshotRows(bill, payments) {
       discount: 0,
       taxable: 0,
       tax: 0,
+      taxLabel: 'Tax',
       service: 0,
       payable: 0,
       paid: paymentsTotal(payments),
@@ -283,12 +393,15 @@ export function billSnapshotRows(bill, payments) {
     }
   }
   const tax = moneyRound((Number(bill.cgst_amount) || 0) + (Number(bill.sgst_amount) || 0))
+  const taxable = moneyRound(bill.taxable_amount)
+  const rate = taxable > 0 && tax > 0 ? Math.round((tax / taxable) * 100) : 0
   const payable = moneyRound(bill.grand_total)
   return {
     subtotal: moneyRound(bill.subtotal),
     discount: moneyRound(bill.discount_amount),
-    taxable: moneyRound(bill.taxable_amount),
+    taxable,
     tax,
+    taxLabel: rate > 0 && rate <= 28 ? `GST (${rate}%)` : 'Tax',
     service: moneyRound(bill.other_tax_amount),
     payable,
     paid: paymentsTotal(payments),
@@ -305,17 +418,25 @@ export function historyTimeline(row) {
     events.push({
       id: `order-${row.order.id}`,
       at: row.order.created_at,
-      title: `Order #${row.order.order_number} created`,
-      detail: orderStatusLabel(row.order.status),
+      title: 'Order created',
+      detail: `Order #${row.order.order_number}`,
     })
   }
   for (const kot of row.kots || []) {
     events.push({
       id: `kot-${kot.id}`,
       at: kot.created_at,
-      title: `KOT #${kot.kot_number} created`,
-      detail: `${kotTypeLabel(kot.kot_type)} · ${kotStatusLabel(kot.status)}`,
+      title: 'KOT created',
+      detail: `KOT #${kot.kot_number} · ${kotTypeLabel(kot.kot_type)}`,
     })
+    if (kot.printed_at) {
+      events.push({
+        id: `kot-print-${kot.id}`,
+        at: kot.printed_at,
+        title: 'KOT printed',
+        detail: `KOT #${kot.kot_number}`,
+      })
+    }
   }
   if (row.bill?.created_at) {
     events.push({
