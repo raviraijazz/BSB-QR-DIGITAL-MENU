@@ -92,6 +92,12 @@ export async function updateKotStatus(id, restaurantId, status) {
 }
 
 export async function markKotPrinted(id, restaurantId) {
+  if (!id || !restaurantId) return { data: null, error: { message: 'Kitchen ticket not found.' } }
+  const rpc = await supabase.rpc('stamp_kot_printed', {
+    p_kot_id: id,
+    p_restaurant_id: restaurantId,
+  })
+  if (!rpc.error && rpc.data) return { data: rpc.data, error: null }
   const { data, error } = await supabase
     .from('kots')
     .update({ printed_at: new Date().toISOString() })
@@ -99,5 +105,5 @@ export async function markKotPrinted(id, restaurantId) {
     .eq('restaurant_id', restaurantId)
     .select(KOT_SELECT)
     .single()
-  return { data, error: friendlyKotError(error) }
+  return { data, error: friendlyKotError(rpc.error || error) }
 }

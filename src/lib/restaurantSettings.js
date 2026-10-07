@@ -151,6 +151,10 @@ export function defaultPrinters() {
   return []
 }
 
+export function defaultPrinterRoutes() {
+  return []
+}
+
 export function defaultKot() {
   return {
     showRestaurantName: true,
@@ -351,6 +355,7 @@ export function emptySettings(restaurant = {}, user = {}) {
     serviceCharges: defaultServiceCharges(),
     payments: defaultPaymentMethods(),
     printers: defaultPrinters(),
+    printerRoutes: defaultPrinterRoutes(),
     roles: defaultRoles(),
     kot: defaultKot(),
     bill: defaultBill(),
@@ -462,7 +467,8 @@ export function hydrateSettings(restaurant, payload, user) {
     taxRates: (payload?.taxRates || []).length ? payload.taxRates : defaultTaxRates(),
     serviceCharges: (payload?.serviceCharges || []).length ? payload.serviceCharges : defaultServiceCharges(),
     payments: normalizePayments(payload?.payments),
-    printers: payload?.printers || [],
+    printers: (payload?.printers || []).length ? payload.printers : defaultPrinters(),
+    printerRoutes: payload?.printerRoutes || defaultPrinterRoutes(),
     roles: normalizeRoles(payload?.roles, payload?.permissions),
     kot: mergeObject(defaultKot(), row.kot),
     bill: mergeObject(defaultBill(), row.bill),
@@ -583,7 +589,7 @@ export function sectionDefaults(section, restaurant, user) {
   if (section === 'payments') return { payments: defaultPaymentMethods() }
   if (section === 'kot') return { kot: defaultKot() }
   if (section === 'bill') return { bill: defaultBill() }
-  if (section === 'printers') return { printers: defaultPrinters() }
+  if (section === 'printers') return { printers: defaultPrinters(), printerRoutes: defaultPrinterRoutes() }
   if (section === 'permissions') return { roles: defaultRoles() }
   if (section === 'qr') return { qr: defaultQr() }
   if (section === 'orders') return { orders: defaultOrders() }

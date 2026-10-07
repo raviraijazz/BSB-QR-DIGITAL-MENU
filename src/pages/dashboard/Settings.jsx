@@ -340,6 +340,7 @@ export default function Settings() {
     form,
     set,
     errors: fieldErrors,
+    restaurant,
     onLogo: (event) => onUpload(event, 'logo_url', `logo-${restaurant.id}`),
     onMark: (event) => onUpload(event, 'mark_url', `mark-${restaurant.id}`),
     onRemoveLogo: () => set('logo_url', ''),

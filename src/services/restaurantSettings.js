@@ -9,11 +9,15 @@ import {
   hydrateSettings,
   PERMISSION_GROUPS,
 } from '../lib/restaurantSettings'
+import { normalizePrinters, normalizeRoutes } from '../lib/printerRouting'
 
 function friendlySettingsError(error) {
   if (!error) return error
   const text = String(error.message || '').toLowerCase()
-  if (text.includes('does not exist') || text.includes('schema cache')) {
+  if (text.includes('does not exist') || text.includes('schema cache') || text.includes('printer_profiles') || text.includes('use_for')) {
+    if (text.includes('print') || text.includes('printer_routes') || text.includes('use_for') || text.includes('stamp_kot')) {
+      return { message: 'KOT printing is not ready. Run supabase/kot-printing.sql in the SQL Editor.' }
+    }
     return { message: 'Restaurant settings are not ready. Run supabase/restaurant-settings.sql in the SQL Editor.' }
   }
   if (text.includes('row-level security') || text.includes('not allowed')) {
@@ -73,17 +77,21 @@ async function replaceChildren(table, restaurantId, rows) {
 export async function loadRestaurantSettings(restaurant, user) {
   if (!restaurant?.id) return { data: null, error: null }
   const restaurantId = restaurant.id
-  const [settings, hours, taxRates, serviceCharges, payments, printers, roles, permissions] = await Promise.all([
+  const [settings, hours, taxRates, serviceCharges, payments, printers, routes, roles, permissions] = await Promise.all([
     supabase.from('restaurant_settings').select('*').eq('restaurant_id', restaurantId).maybeSingle(),
     supabase.from('restaurant_working_hours').select('*').eq('restaurant_id', restaurantId).order('day_of_week'),
     supabase.from('restaurant_tax_rates').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
     supabase.from('restaurant_service_charges').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
     supabase.from('restaurant_payment_methods').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
     supabase.from('restaurant_printer_profiles').select('*').eq('restaurant_id', restaurantId).order('created_at'),
+    supabase.from('restaurant_printer_routes').select('*').eq('restaurant_id', restaurantId).order('created_at'),
     supabase.from('restaurant_roles').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
     supabase.from('restaurant_role_permissions').select('*').eq('restaurant_id', restaurantId),
   ])
+  const routeMissing = String(routes.error?.message || '').toLowerCase().includes('does not exist')
+    || String(routes.error?.message || '').toLowerCase().includes('schema cache')
   const firstError = settings.error || hours.error || taxRates.error || serviceCharges.error || payments.error || printers.error || roles.error || permissions.error
+    || (routes.error && !routeMissing ? routes.error : null)
   if (firstError) return { data: null, error: friendlySettingsError(firstError) }
   return {
     data: hydrateSettings(restaurant, {
@@ -92,7 +100,8 @@ export async function loadRestaurantSettings(restaurant, user) {
       taxRates: taxRates.data,
       serviceCharges: serviceCharges.data,
       payments: payments.data,
-      printers: printers.data,
+      printers: normalizePrinters(printers.data || []),
+      printerRoutes: routeMissing ? [] : normalizeRoutes(routes.data || []),
       roles: roles.data,
       permissions: permissions.data,
     }, user),
@@ -175,22 +184,64 @@ export async function saveRestaurantSettings(userId, restaurant, form) {
   if (pays.error) return { data: null, restaurant: profile.data, error: friendlySettingsError(pays.error) }
 
   const printerRows = (form.printers || []).map((row) => ({
-    ...(row.id ? { id: row.id } : {}),
     restaurant_id: restaurantId,
     name: String(row.name || 'Printer').trim() || 'Printer',
     printer_type: row.printer_type || 'thermal',
-    connection_type: row.connection_type || 'network',
+    connection_type: row.connection_type || 'browser',
     paper_width: row.paper_width || '80mm',
     is_active: row.is_active !== false,
     is_default_kot: Boolean(row.is_default_kot),
     is_default_bill: Boolean(row.is_default_bill),
     is_default_receipt: Boolean(row.is_default_receipt),
     is_default_kitchen: Boolean(row.is_default_kitchen),
+    use_for: row.use_for || 'kot',
+    address: String(row.address || '').trim(),
+    host: String(row.host || '').trim(),
+    port: String(row.port || '').trim(),
     route_by: row.route_by || 'none',
     route_value: String(row.route_value || '').trim(),
   }))
-  const printers = await replaceChildren('restaurant_printer_profiles', restaurantId, printerRows)
+  let printers = await replaceChildren('restaurant_printer_profiles', restaurantId, printerRows)
+  if (printers.error) {
+    const text = String(printers.error.message || '').toLowerCase()
+    const missingPrintCols = text.includes('use_for') || text.includes('address') || text.includes('host') || text.includes('port') || text.includes('browser') || text.includes('system')
+    if (missingPrintCols) {
+      const legacyRows = printerRows.map(({ use_for, address, host, port, ...row }) => ({
+        ...row,
+        connection_type: ['browser', 'system'].includes(row.connection_type) ? 'network' : row.connection_type,
+      }))
+      printers = await replaceChildren('restaurant_printer_profiles', restaurantId, legacyRows)
+    }
+  }
   if (printers.error) return { data: null, restaurant: profile.data, error: friendlySettingsError(printers.error) }
+
+  const savedPrinters = await supabase
+    .from('restaurant_printer_profiles')
+    .select('id, name, created_at')
+    .eq('restaurant_id', restaurantId)
+    .order('created_at')
+  if (savedPrinters.error) return { data: null, restaurant: profile.data, error: friendlySettingsError(savedPrinters.error) }
+  const savedIds = (savedPrinters.data || []).map((row) => row.id)
+  const routeRows = (form.printerRoutes || [])
+    .filter((row) => row.route_type && String(row.route_value || '').trim() && row.printer_id)
+    .map((row) => {
+      const index = (form.printers || []).findIndex((item) => item.id === row.printer_id || item._key === row.printer_id)
+      const printerId = index >= 0 ? savedIds[index] : row.printer_id
+      return {
+        restaurant_id: restaurantId,
+        printer_id: printerId,
+        route_type: row.route_type,
+        route_value: String(row.route_value || '').trim(),
+      }
+    })
+    .filter((row) => row.printer_id)
+  const routes = await replaceChildren('restaurant_printer_routes', restaurantId, routeRows)
+  if (routes.error) {
+    const text = String(routes.error.message || '').toLowerCase()
+    if (!(text.includes('does not exist') || text.includes('schema cache'))) {
+      return { data: null, restaurant: profile.data, error: friendlySettingsError(routes.error) }
+    }
+  }
 
   const roleSeed = form.roles?.length ? form.roles : defaultRoles()
   const roleRows = roleSeed.map((row, index) => ({

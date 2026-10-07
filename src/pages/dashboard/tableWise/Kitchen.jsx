@@ -18,6 +18,8 @@ import {
 } from '../../../lib/orderCart'
 import { TABLE_WISE_HOME } from '../../../lib/tableWiseNav'
 import { sessionTablesLabel, tableHeading } from '../../../lib/tableToken'
+import { printStatusLabel } from '../../../lib/printerRouting'
+import { printCommittedKot } from '../../../services/printJobs'
 import { listRestaurantKots, nextKotStatus, updateKotStatus } from '../../../services/kots'
 import { tablesForSession } from '../../../services/tableMoves'
 import { listTables } from '../../../services/tables'
@@ -131,6 +133,9 @@ function KotCard({ kot, tableLabel, waiter, order, working, now, onOpen, onStatu
               {kotTypeLabel(kot.kot_type)}
             </span>
           )}
+          <span className="rounded-full bg-paper px-2.5 py-0.5 text-[11px] font-medium text-muted">
+            {printStatusLabel(kot.printed_at ? 'printed' : '', kot.printed_at)}
+          </span>
         </div>
       </div>
 
@@ -180,7 +185,7 @@ function KotCard({ kot, tableLabel, waiter, order, working, now, onOpen, onStatu
   )
 }
 
-function TicketDrawer({ open, kot, tableLabel, waiter, order, session, working, now, onClose, onStatus }) {
+function TicketDrawer({ open, kot, tableLabel, waiter, order, session, working, printing, now, onClose, onStatus, onPrint }) {
   useEffect(() => {
     if (!open) return undefined
     function onKey(event) {
@@ -260,7 +265,7 @@ function TicketDrawer({ open, kot, tableLabel, waiter, order, session, working, 
           </div>
         </div>
 
-        <div className="mt-6">
+        <div className="mt-6 space-y-2">
           {next ? (
             <Button className="w-full" disabled={working} onClick={() => onStatus(kot, next)}>
               {working ? 'Updating...' : actionLabel(kot.status)}
@@ -268,6 +273,10 @@ function TicketDrawer({ open, kot, tableLabel, waiter, order, session, working, 
           ) : (
             <p className="rounded-xl bg-forest/10 px-3 py-2 text-center text-sm font-medium text-forest">Ready to serve</p>
           )}
+          <Button variant="secondary" className="w-full" disabled={printing} onClick={() => onPrint(kot)}>
+            {printing ? 'Printing...' : kot.printed_at ? 'Reprint KOT' : 'Print KOT'}
+          </Button>
+          <p className="text-center text-xs text-muted">{printStatusLabel(kot.printed_at ? 'printed' : '', kot.printed_at)}</p>
         </div>
       </div>
     </div>
@@ -286,6 +295,7 @@ export default function Kitchen() {
   const [selectedId, setSelectedId] = useState('')
   const [now, setNow] = useState(() => Date.now())
   const [refreshedAt, setRefreshedAt] = useState(null)
+  const [printingId, setPrintingId] = useState('')
 
   const restaurantId = restaurant?.id
 
@@ -364,6 +374,22 @@ export default function Kitchen() {
       return
     }
     setKots((current) => current.map((row) => (row.id === kot.id ? { ...row, ...data } : row)))
+  }
+
+  async function onPrint(kot) {
+    setPrintingId(kot.id)
+    setError('')
+    const result = await printCommittedKot({
+      restaurant,
+      order: kotOrder(kot),
+      kot,
+      tableLabel: labelFor(kot),
+      waiter: kotWaiter(kot),
+      reprint: Boolean(kot.printed_at),
+    })
+    setPrintingId('')
+    if (result.error) setError(result.error.message)
+    else if (result.printed) load(true)
   }
 
   if (loading || busy) return <Spinner />
@@ -493,9 +519,11 @@ export default function Kitchen() {
         order={selected ? kotOrder(selected) : null}
         session={selected ? kotSession(selected) : null}
         working={selected ? workingId === selected.id : false}
+        printing={selected ? printingId === selected.id : false}
         now={now}
         onClose={() => setSelectedId('')}
         onStatus={onStatus}
+        onPrint={onPrint}
       />
     </div>
   )

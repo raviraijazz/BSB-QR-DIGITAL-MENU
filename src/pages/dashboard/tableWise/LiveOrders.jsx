@@ -5,7 +5,8 @@ import Button from '../../../components/Button'
 import EmptyState from '../../../components/EmptyState'
 import Spinner from '../../../components/Spinner'
 import { firstRelated, formatClock, formatMoney, formatQty, isOpenSession, kotStatusLabel, kotTypeLabel, orderStatusLabel } from '../../../lib/orderCart'
-import { printKot } from '../../../lib/kotPrint'
+import { printStatusLabel } from '../../../lib/printerRouting'
+import { printCommittedKot } from '../../../services/printJobs'
 import { TABLE_WISE_HOME } from '../../../lib/tableWiseNav'
 import { sessionTablesLabel, tableHeading } from '../../../lib/tableToken'
 import { tablesForSession } from '../../../services/tableMoves'
@@ -25,6 +26,7 @@ export default function LiveOrders() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(true)
   const [filter, setFilter] = useState('open')
+  const [printingId, setPrintingId] = useState('')
 
   async function load() {
     if (!restaurant?.id) {
@@ -163,14 +165,31 @@ export default function LiveOrders() {
                 )}
                 {order.notes ? <p className="mt-2 text-sm text-muted">Note: {order.notes}</p> : null}
                 {kot ? (
-                  <div className="mt-3">
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
                     <Button
                       variant="secondary"
                       className="!px-3 !py-1.5"
-                      onClick={() => printKot({ restaurant, kot, table, tableLabel, waiter, order })}
+                      disabled={printingId === kot.id}
+                      onClick={async () => {
+                        setPrintingId(kot.id)
+                        setError('')
+                        const result = await printCommittedKot({
+                          restaurant,
+                          order,
+                          kot,
+                          table,
+                          tableLabel,
+                          waiter,
+                          reprint: Boolean(kot.printed_at),
+                        })
+                        setPrintingId('')
+                        if (result.error) setError(result.error.message)
+                        else if (result.printed) load()
+                      }}
                     >
-                      Print KOT
+                      {printingId === kot.id ? 'Printing...' : kot.printed_at ? 'Reprint KOT' : 'Print KOT'}
                     </Button>
+                    <span className="text-xs text-muted">{printStatusLabel(kot.printed_at ? 'printed' : '', kot.printed_at)}</span>
                   </div>
                 ) : null}
               </section>

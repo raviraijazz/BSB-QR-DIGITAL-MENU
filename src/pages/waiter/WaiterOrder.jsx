@@ -6,13 +6,14 @@ import EmptyState from '../../components/EmptyState'
 import Field, { inputClass } from '../../components/Field'
 import FoodTypeMark from '../../components/FoodTypeMark'
 import Spinner from '../../components/Spinner'
-import { cartTotals, formatMoney, isOpenSession, itemIsSoldOut, orderableVariants } from '../../lib/orderCart'
+import { cartTotals, firstRelated, formatMoney, isOpenSession, itemIsSoldOut, orderableVariants } from '../../lib/orderCart'
 import { sessionTablesLabel, tableHeading } from '../../lib/tableToken'
 import { tablesForSession } from '../../services/tableMoves'
 import { normalizeFoodType } from '../../lib/foodType'
 import { listCategories } from '../../services/categories'
 import { listMenuItems } from '../../services/menuItems'
 import { getSession, tableForSession, waiterOwnsSession } from '../../services/tableSessions'
+import { printCommittedKot } from '../../services/printJobs'
 import { buildCartLine, clearCart, createSessionOrder, removeCartLine, setCartNote, setCartQuantity, upsertCartLine } from '../../services/waiterOrders'
 
 const FILTERS = [
@@ -283,11 +284,29 @@ export default function WaiterOrder() {
       setError(nextError?.message || 'Unable to place order. Please try again.')
       return
     }
+    const kot = firstRelated(data.kots)
+    const printed = await printCommittedKot({
+      restaurant,
+      order: data,
+      kot,
+      table: orderTable,
+      tableLabel,
+      waiter,
+      reprint: false,
+    })
     setLines(clearCart())
     setNotes('')
+    const placed = data.order_number ? `Order placed. Order #${data.order_number}.` : 'Order placed'
+    const printNote = printed.skipped
+      ? ''
+      : printed.error
+        ? ' Print failed. Retry from Kitchen or Live Orders.'
+        : printed.printed
+          ? ' KOT sent to print.'
+          : ''
     navigate(`/waiter/sessions/${session.id}`, {
       replace: true,
-      state: { notice: data.order_number ? `Order placed. Order #${data.order_number}.` : 'Order placed' },
+      state: { notice: `${placed}${printNote}` },
     })
   }
 

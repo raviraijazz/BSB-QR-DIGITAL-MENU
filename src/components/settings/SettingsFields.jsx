@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react'
 import Field, { inputClass } from '../Field'
 import {
   CURRENCIES,
@@ -7,6 +8,16 @@ import {
   TIMEZONES,
   WEEKDAYS,
 } from '../../lib/restaurantSettings'
+import {
+  ORDER_TYPES,
+  connectionLabel,
+  emptyPrinter,
+  emptyRoute,
+  printerLabel,
+} from '../../lib/printerRouting'
+import { printTestTicket } from '../../services/printJobs'
+import { listCategories } from '../../services/categories'
+import { listMenuItems } from '../../services/menuItems'
 
 export const selectClass = inputClass
 
@@ -390,76 +401,280 @@ export function BillFields({ form, set }) {
   )
 }
 
-export function PrinterFields({ form, set }) {
+function printerKey(row, index) {
+  return row.id || row._key || `printer-${index}`
+}
+
+export function PrinterFields({ form, set, restaurant }) {
   const rows = form.printers || []
+  const routes = form.printerRoutes || []
+  const [tab, setTab] = useState('profiles')
+  const [categories, setCategories] = useState([])
+  const [menuItems, setMenuItems] = useState([])
+  const [testNotice, setTestNotice] = useState('')
+  const [testError, setTestError] = useState('')
+  const [testingId, setTestingId] = useState('')
+
+  useEffect(() => {
+    if (!restaurant?.id) return undefined
+    let active = true
+    Promise.all([listCategories(restaurant.id), listMenuItems(restaurant.id)]).then(([nextCategories, nextItems]) => {
+      if (!active) return
+      setCategories(nextCategories.data || [])
+      setMenuItems(nextItems.data || [])
+    })
+    return () => {
+      active = false
+    }
+  }, [restaurant?.id])
+
   function patch(index, next) {
-    set('printers', rows.map((item, i) => (i === index ? { ...item, ...next } : item)))
+    const updated = rows.map((item, i) => {
+      if (i !== index) {
+        if (next.is_default_kot && item.is_default_kot) return { ...item, is_default_kot: false }
+        if (next.is_default_kitchen && item.is_default_kitchen) return { ...item, is_default_kitchen: false }
+        return item
+      }
+      return { ...item, ...next }
+    })
+    set('printers', updated)
   }
+
+  function addPrinter() {
+    set('printers', [...rows, { ...emptyPrinter(), _key: `new-${Date.now()}`, is_default_kot: rows.length === 0 }])
+  }
+
+  function removePrinter(index) {
+    const removed = rows[index]
+    const key = printerKey(removed, index)
+    set('printers', rows.filter((_, i) => i !== index))
+    set('printerRoutes', routes.filter((row) => row.printer_id !== removed.id && row.printer_id !== key))
+  }
+
+  async function onTest(row, index) {
+    setTestingId(printerKey(row, index))
+    setTestError('')
+    setTestNotice('')
+    const result = await printTestTicket({ restaurant, printer: row, settings: form })
+    setTestingId('')
+    if (result.error) setTestError(result.error.message)
+    else setTestNotice(`Test print opened for ${printerLabel(row)}. Choose a system printer in the browser dialog.`)
+  }
+
+  function patchRoute(index, next) {
+    set('printerRoutes', routes.map((item, i) => (i === index ? { ...item, ...next } : item)))
+  }
+
+  const kotPrinters = rows.filter((row) => row.use_for !== 'bill' && row.use_for !== 'receipt')
+  const needsAddress = (row) => row.connection_type === 'network' || row.connection_type === 'usb' || row.connection_type === 'bluetooth'
+
+  const kotPreview = useMemo(() => {
+    const kot = form.kot || {}
+    return { kot, name: form.name, logo_url: form.logo_url }
+  }, [form.kot, form.name, form.logo_url])
+
+  const TABS = [
+    { id: 'profiles', label: 'Printers' },
+    { id: 'routing', label: 'Routing' },
+    { id: 'preview', label: 'KOT preview' },
+  ]
+
   return (
     <div className="space-y-4">
-      <AlertNote>Printer profiles are saved as configuration only. No hardware communication or test print is performed.</AlertNote>
-      {rows.map((row, index) => (
-        <div key={row.id || index} className="space-y-3 rounded-[16px] border border-line bg-white p-4">
-          <div className="flex items-end justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <Field label="Profile name">
-                <input className={inputClass} value={row.name} onChange={(e) => patch(index, { name: e.target.value })} />
-              </Field>
+      <AlertNote>Printing uses the browser or system print dialog. USB and network addresses are stored for later hardware support and are not claimed as live connections.</AlertNote>
+      <div className="flex gap-1 rounded-xl bg-paper p-1">
+        {TABS.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => setTab(option.id)}
+            className={`flex-1 rounded-lg px-2 py-1.5 text-[12px] font-medium ${tab === option.id ? 'bg-white text-ink shadow-sm' : 'text-muted'}`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      {testError ? <p className="text-sm text-rose-700">{testError}</p> : null}
+      {testNotice ? <p className="text-sm text-forest">{testNotice}</p> : null}
+
+      {tab === 'profiles' ? (
+        <div className="space-y-4">
+          {rows.length === 0 ? (
+            <p className="rounded-[16px] border border-dashed border-line bg-white px-4 py-8 text-center text-sm text-muted">
+              No printers yet. Add a kitchen printer to route KOTs.
+            </p>
+          ) : null}
+          {rows.map((row, index) => (
+            <div key={printerKey(row, index)} className="space-y-3 rounded-[16px] border border-line bg-white p-4">
+              <div className="flex items-end justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <Field label="Printer name">
+                    <input className={inputClass} value={row.name} onChange={(e) => patch(index, { name: e.target.value })} />
+                  </Field>
+                </div>
+                <button type="button" className="mb-1 text-sm text-rose-700" onClick={() => removePrinter(index)}>Remove</button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Field label="Type">
+                  <select className={selectClass} value={row.printer_type} onChange={(e) => patch(index, { printer_type: e.target.value })}>
+                    <option value="thermal">Thermal</option>
+                    <option value="kitchen">Kitchen</option>
+                    <option value="laser">Laser</option>
+                  </select>
+                </Field>
+                <Field label="Connection">
+                  <select className={selectClass} value={row.connection_type} onChange={(e) => patch(index, { connection_type: e.target.value })}>
+                    <option value="browser">Browser print</option>
+                    <option value="system">System print</option>
+                    <option value="usb">USB</option>
+                    <option value="network">Network</option>
+                    <option value="bluetooth">Bluetooth</option>
+                  </select>
+                </Field>
+                <Field label="Paper">
+                  <select className={selectClass} value={row.paper_width} onChange={(e) => patch(index, { paper_width: e.target.value })}>
+                    <option value="58mm">58mm</option>
+                    <option value="80mm">80mm</option>
+                    <option value="a4">A4</option>
+                  </select>
+                </Field>
+                <Field label="Use for">
+                  <select className={selectClass} value={row.use_for || 'kot'} onChange={(e) => patch(index, { use_for: e.target.value })}>
+                    <option value="kot">KOT</option>
+                    <option value="kitchen">Kitchen</option>
+                    <option value="bill">Bill (Phase 18)</option>
+                    <option value="receipt">Receipt (Phase 18)</option>
+                  </select>
+                </Field>
+              </div>
+              {needsAddress(row) ? (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Field label="Address / path">
+                    <input className={inputClass} value={row.address || ''} onChange={(e) => patch(index, { address: e.target.value })} placeholder="Optional" />
+                  </Field>
+                  <Field label="Host">
+                    <input className={inputClass} value={row.host || ''} onChange={(e) => patch(index, { host: e.target.value })} placeholder="Optional" />
+                  </Field>
+                  <Field label="Port">
+                    <input className={inputClass} value={row.port || ''} onChange={(e) => patch(index, { port: e.target.value })} placeholder="9100" />
+                  </Field>
+                </div>
+              ) : (
+                <p className="text-[11px] text-muted">{connectionLabel(row.connection_type)} opens the browser or system print dialog.</p>
+              )}
+              {(row.use_for === 'bill' || row.use_for === 'receipt') ? (
+                <p className="text-[11px] text-muted">Bill and receipt printing is reserved for Phase 18.</p>
+              ) : null}
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Toggle checked={row.is_active !== false} onChange={(value) => patch(index, { is_active: value })} label="Active" />
+                <Toggle checked={row.is_default_kot} onChange={(value) => patch(index, { is_default_kot: value, use_for: value ? 'kot' : row.use_for })} label="Default KOT printer" />
+              </div>
+              <button
+                type="button"
+                className="text-sm font-medium text-forest"
+                disabled={Boolean(testingId) || row.use_for === 'bill' || row.use_for === 'receipt'}
+                onClick={() => onTest(row, index)}
+              >
+                {testingId === printerKey(row, index) ? 'Opening print dialog...' : 'Test print'}
+              </button>
             </div>
-            <button type="button" className="mb-1 text-sm text-rose-700" onClick={() => set('printers', rows.filter((_, i) => i !== index))}>Remove</button>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Field label="Type">
-              <select className={selectClass} value={row.printer_type} onChange={(e) => patch(index, { printer_type: e.target.value })}>
-                <option value="thermal">Thermal</option>
-                <option value="kitchen">Kitchen</option>
-                <option value="laser">Laser</option>
-              </select>
-            </Field>
-            <Field label="Connection">
-              <select className={selectClass} value={row.connection_type} onChange={(e) => patch(index, { connection_type: e.target.value })}>
-                <option value="usb">USB</option>
-                <option value="network">Network</option>
-                <option value="bluetooth">Bluetooth</option>
-              </select>
-            </Field>
-            <Field label="Paper width">
-              <select className={selectClass} value={row.paper_width} onChange={(e) => patch(index, { paper_width: e.target.value })}>
-                <option value="58mm">58mm</option>
-                <option value="80mm">80mm</option>
-                <option value="a4">A4</option>
-              </select>
-            </Field>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Toggle checked={row.is_active} onChange={(value) => patch(index, { is_active: value })} label="Active" />
-            <Toggle checked={row.is_default_kot} onChange={(value) => patch(index, { is_default_kot: value })} label="Default KOT printer" />
-            <Toggle checked={row.is_default_bill} onChange={(value) => patch(index, { is_default_bill: value })} label="Default bill printer" />
-            <Toggle checked={row.is_default_receipt} onChange={(value) => patch(index, { is_default_receipt: value })} label="Default receipt printer" />
-            <Toggle checked={row.is_default_kitchen} onChange={(value) => patch(index, { is_default_kitchen: value })} label="Default kitchen printer" />
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Route by">
-              <select className={selectClass} value={row.route_by} onChange={(e) => patch(index, { route_by: e.target.value })}>
-                <option value="none">None</option>
-                <option value="category">Category</option>
-                <option value="item">Item</option>
-                <option value="station">Kitchen station</option>
-              </select>
-            </Field>
-            <Field label="Route value">
-              <input className={inputClass} value={row.route_value} onChange={(e) => patch(index, { route_value: e.target.value })} />
-            </Field>
+          ))}
+          <button type="button" className="text-sm font-medium text-forest" onClick={addPrinter}>
+            Add printer
+          </button>
+        </div>
+      ) : null}
+
+      {tab === 'routing' ? (
+        <div className="space-y-4">
+          <AlertNote>Routing priority is Menu Item, then Category, then Order Type, then the default KOT printer. Split tickets print only the matching items.</AlertNote>
+          {kotPrinters.length === 0 ? (
+            <p className="text-sm text-muted">Add an active KOT printer before creating routes.</p>
+          ) : (
+            <>
+              {routes.map((row, index) => (
+                <div key={row.id || index} className="grid gap-3 rounded-[16px] border border-line bg-white p-4 sm:grid-cols-[8rem_1fr_1fr_auto]">
+                  <Field label="Route by">
+                    <select className={selectClass} value={row.route_type} onChange={(e) => patchRoute(index, { route_type: e.target.value, route_value: '' })}>
+                      <option value="item">Menu item</option>
+                      <option value="category">Category</option>
+                      <option value="order_type">Order type</option>
+                    </select>
+                  </Field>
+                  <Field label="Matches">
+                    {row.route_type === 'item' ? (
+                      <select className={selectClass} value={row.route_value} onChange={(e) => patchRoute(index, { route_value: e.target.value })}>
+                        <option value="">Select item</option>
+                        {menuItems.map((item) => (
+                          <option key={item.id} value={item.id}>{item.name}</option>
+                        ))}
+                      </select>
+                    ) : null}
+                    {row.route_type === 'category' ? (
+                      <select className={selectClass} value={row.route_value} onChange={(e) => patchRoute(index, { route_value: e.target.value })}>
+                        <option value="">Select category</option>
+                        {categories.map((item) => (
+                          <option key={item.id} value={item.id}>{item.name}</option>
+                        ))}
+                      </select>
+                    ) : null}
+                    {row.route_type === 'order_type' ? (
+                      <select className={selectClass} value={row.route_value} onChange={(e) => patchRoute(index, { route_value: e.target.value })}>
+                        <option value="">Select type</option>
+                        {ORDER_TYPES.map((item) => (
+                          <option key={item.id} value={item.id}>{item.label}</option>
+                        ))}
+                      </select>
+                    ) : null}
+                  </Field>
+                  <Field label="Printer">
+                    <select className={selectClass} value={row.printer_id} onChange={(e) => patchRoute(index, { printer_id: e.target.value })}>
+                      <option value="">Select printer</option>
+                      {kotPrinters.map((printer, printerIndex) => (
+                        <option key={printerKey(printer, printerIndex)} value={printer.id || printer._key || printerKey(printer, printerIndex)}>
+                          {printerLabel(printer)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <button type="button" className="self-end text-sm text-rose-700" onClick={() => set('printerRoutes', routes.filter((_, i) => i !== index))}>Remove</button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="text-sm font-medium text-forest"
+                onClick={() => set('printerRoutes', [...routes, { ...emptyRoute(), printer_id: kotPrinters[0]?.id || kotPrinters[0]?._key || '' }])}
+              >
+                Add route
+              </button>
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {tab === 'preview' ? (
+        <div className="space-y-3">
+          <AlertNote>Preview uses KOT layout flags from KOT Settings. Sample items only — nothing is printed until you use Test print.</AlertNote>
+          <div className="mx-auto max-w-xs rounded-[16px] border border-line bg-white p-4 font-mono text-[12px]">
+            {kotPreview.kot.showLogo && kotPreview.logo_url ? <img src={kotPreview.logo_url} alt="" className="mx-auto mb-2 h-8 w-8 rounded object-cover" /> : null}
+            {kotPreview.kot.showRestaurantName ? <p className="text-center text-[11px] font-semibold uppercase tracking-[0.14em]">{kotPreview.name || 'Restaurant'}</p> : null}
+            {kotPreview.kot.header ? <p className="mt-1 text-center text-[11px] text-muted">{kotPreview.kot.header}</p> : null}
+            <p className="mt-2 text-center text-sm font-semibold">KITCHEN ORDER</p>
+            <div className="mt-2 space-y-0.5">
+              {kotPreview.kot.showKotNumber ? <p>KOT #104{kotPreview.kot.showReprintLabel ? ' · NEW' : ''}</p> : null}
+              {kotPreview.kot.showTable ? <p>Table: Table 4</p> : null}
+              {kotPreview.kot.showWaiter ? <p>Waiter: Vijay Pandey</p> : null}
+              {kotPreview.kot.showOrderTime ? <p>Time: 10:45 AM</p> : null}
+              {kotPreview.kot.showOrderType ? <p>Type: Dine-in</p> : null}
+            </div>
+            <hr className="my-2 border-dashed border-line" />
+            <p>{kotPreview.kot.showQuantity ? '1 x ' : ''}{kotPreview.kot.showItemName ? 'Veg Biryani' : 'Item'}{kotPreview.kot.showVariant ? ' (Full)' : ''}</p>
+            {kotPreview.kot.showNotes ? <p className="text-[10px] text-muted">Less spicy</p> : null}
+            <p className="mt-1">{kotPreview.kot.showQuantity ? '1 x ' : ''}{kotPreview.kot.showItemName ? 'Paneer Tikka' : 'Item'}</p>
+            {kotPreview.kot.footer ? <p className="mt-2 text-center text-[11px] text-muted">{kotPreview.kot.footer}</p> : null}
           </div>
         </div>
-      ))}
-      <button
-        type="button"
-        className="text-sm font-medium text-forest"
-        onClick={() => set('printers', [...rows, { name: 'New printer', printer_type: 'thermal', connection_type: 'network', paper_width: '80mm', is_active: true, is_default_kot: false, is_default_bill: false, is_default_receipt: false, is_default_kitchen: false, route_by: 'none', route_value: '' }])}
-      >
-        Add printer profile
-      </button>
+      ) : null}
     </div>
   )
 }
