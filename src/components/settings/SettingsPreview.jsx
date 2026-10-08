@@ -1,3 +1,4 @@
+import { sampleBillDocument } from '../../lib/billPrint'
 import { defaultTaxRate, formatMoneyPreview } from '../../lib/restaurantSettings'
 
 const TABS = [
@@ -45,13 +46,74 @@ function Ticket({ children, accent }) {
   )
 }
 
+function BillPreviewTicket({ form, accent }) {
+  const doc = sampleBillDocument(form)
+  const flags = doc.flags || {}
+  const align = flags.alignment || 'center'
+  const title = flags.template === 'thermal' ? 'RECEIPT' : 'TAX INVOICE'
+  return (
+    <Ticket accent={accent}>
+      <div style={{ textAlign: align }}>
+        {flags.showLogo && doc.logoUrl ? <img src={doc.logoUrl} alt="" className="mx-auto mb-2 h-10 w-10 rounded-lg object-cover" /> : null}
+        {flags.showRestaurantName ? <p className="font-display text-lg">{doc.restaurantName}</p> : null}
+        {flags.showLegalName && doc.legalName ? <p className="text-[11px] text-muted">{doc.legalName}</p> : null}
+        {doc.header ? <p className="text-[11px] text-muted">{doc.header}</p> : null}
+        {flags.showAddress && doc.address ? <p className="mt-1 text-[11px] text-muted">{doc.address}</p> : null}
+        {flags.showPhone && doc.phone ? <p className="text-[11px] text-muted">{doc.phone}</p> : null}
+        {flags.showEmail && doc.email ? <p className="text-[11px] text-muted">{doc.email}</p> : null}
+        {flags.showGstin && doc.gstin ? <p className="text-[11px] text-muted">GSTIN {doc.gstin}</p> : null}
+      </div>
+      <p className="mt-2 text-center text-[11px] font-semibold tracking-[0.12em]">{title}</p>
+      <p className="text-center text-[10px] uppercase tracking-[0.12em] text-muted">Sample preview</p>
+      <div className="mt-2 space-y-0.5 text-[12px]">
+        {flags.showBillNumber ? <p>Bill #{doc.billNumber}</p> : null}
+        {flags.showDateTime ? <p>{doc.dateLabel} · {doc.timeLabel}</p> : null}
+        {flags.showTable ? <p>Table: {doc.tableLabel}</p> : null}
+        {flags.showWaiter ? <p>Waiter: {doc.waiterLabel}</p> : null}
+        {flags.showGuestCount ? <p>Guests: {doc.guestCount}</p> : null}
+      </div>
+      <hr className="my-2 border-dashed border-line" />
+      <ul className="space-y-1 text-[12px]">
+        {doc.items.map((item) => (
+          <li key={item.id} className="flex justify-between gap-2">
+            <span>
+              {flags.showItemName ? item.name : 'Item'}
+              {flags.showVariants && item.variant ? ` (${item.variant})` : ''}
+              {flags.showItemCode && item.code ? <span className="block text-[10px] text-muted">#{item.code}</span> : null}
+              {flags.showItemNotes && item.notes ? <span className="block text-[10px] text-muted">{item.notes}</span> : null}
+            </span>
+            <span className="tabular-nums">{money(item.amount, doc.currency)}</span>
+          </li>
+        ))}
+      </ul>
+      <hr className="my-2 border-dashed border-line" />
+      <div className="space-y-0.5 text-[12px]">
+        <p className="flex justify-between"><span>Subtotal</span><span>{money(doc.subtotal, doc.currency)}</span></p>
+        {flags.showDiscount ? <p className="flex justify-between"><span>Discount</span><span>{doc.discount ? `− ${money(doc.discount, doc.currency)}` : 'None'}</span></p> : null}
+        {flags.showTax ? <p className="flex justify-between"><span>{doc.taxLabel}</span><span>{money(doc.tax, doc.currency)}</span></p> : null}
+        {flags.showTax && flags.showTaxBreakdown && (doc.cgst || doc.sgst) ? (
+          <>
+            <p className="flex justify-between text-muted"><span>CGST</span><span>{money(doc.cgst, doc.currency)}</span></p>
+            <p className="flex justify-between text-muted"><span>SGST</span><span>{money(doc.sgst, doc.currency)}</span></p>
+          </>
+        ) : null}
+        {flags.showServiceCharge ? <p className="flex justify-between"><span>Service</span><span>{money(doc.service, doc.currency)}</span></p> : null}
+        <p className="flex justify-between font-semibold"><span>Grand Total</span><span>{money(doc.payable, doc.currency)}</span></p>
+        {flags.showPaymentMethod ? <p>Paid: Cash + UPI</p> : null}
+        {flags.showSplitPayments ? <p className="text-muted">Cash {money(200, doc.currency)} · UPI {money(Math.max(0, doc.payable - 200), doc.currency)}</p> : null}
+        {flags.showUpiInfo && doc.upiId ? <p className="text-muted">UPI {doc.upiName || doc.upiId}</p> : null}
+      </div>
+      {flags.showFooter ? <p className="mt-2 text-center text-[11px] text-muted">{doc.footer || doc.thankYou}</p> : null}
+      {flags.autoPrintOnSettle === false ? <p className="mt-2 text-center text-[10px] text-muted">Auto-print off</p> : null}
+    </Ticket>
+  )
+}
+
 export default function SettingsPreview({ form, tab, onTab }) {
   const accent = form.primary_color || '#1f3d32'
   const kot = form.kot || {}
-  const bill = form.bill || {}
   const totals = sampleTotals(form)
   const currency = form.currency || 'INR'
-  const upi = (form.payments || []).find((row) => row.method === 'upi' && row.is_enabled)
 
   return (
     <aside className="rounded-[18px] border border-line bg-card p-4 shadow-sm">
@@ -104,47 +166,7 @@ export default function SettingsPreview({ form, tab, onTab }) {
         ) : null}
 
         {tab === 'bill' ? (
-          <Ticket accent={accent}>
-            {bill.showLogo && form.logo_url ? <img src={form.logo_url} alt="" className="mx-auto mb-2 h-10 w-10 rounded-lg object-cover" /> : null}
-            {bill.showRestaurantName ? <p className="text-center font-display text-lg">{form.name || 'Restaurant'}</p> : null}
-            {bill.showLegalName && form.owner_name ? <p className="text-center text-[11px] text-muted">{form.owner_name}</p> : null}
-            {bill.header ? <p className="text-center text-[11px] text-muted">{bill.header}</p> : null}
-            {bill.showAddress ? <p className="mt-1 text-center text-[11px] text-muted">{form.address || 'Address'}</p> : null}
-            {bill.showPhone ? <p className="text-center text-[11px] text-muted">{form.phone || ''}</p> : null}
-            {bill.showEmail && form.email ? <p className="text-center text-[11px] text-muted">{form.email}</p> : null}
-            {bill.showGstin && form.gstin ? <p className="text-center text-[11px] text-muted">GSTIN {form.gstin}</p> : null}
-            <div className="mt-2 space-y-0.5 text-[12px]">
-              {bill.showBillNumber ? <p>Bill #{SAMPLE.bill}</p> : null}
-              {bill.showTable ? <p>Table: {SAMPLE.table}</p> : null}
-              {bill.showWaiter ? <p>Waiter: {SAMPLE.waiter}</p> : null}
-              {bill.showGuestCount ? <p>Guests: 2</p> : null}
-            </div>
-            <hr className="my-2 border-dashed border-line" />
-            <ul className="space-y-1 text-[12px]">
-              {SAMPLE.items.map((item) => (
-                <li key={item.name} className="flex justify-between gap-2">
-                  <span>
-                    {bill.showItemName ? item.name : 'Item'}
-                    {bill.showVariants && item.variant ? ` (${item.variant})` : ''}
-                    {bill.showItemCode ? <span className="block text-[10px] text-muted">SKU</span> : null}
-                  </span>
-                  <span className="tabular-nums">{money(item.price, currency)}</span>
-                </li>
-              ))}
-            </ul>
-            <hr className="my-2 border-dashed border-line" />
-            <div className="space-y-0.5 text-[12px]">
-              <p className="flex justify-between"><span>Subtotal</span><span>{money(totals.subtotal, currency)}</span></p>
-              {bill.showDiscount ? <p className="flex justify-between"><span>Discount</span><span>{money(0, currency)}</span></p> : null}
-              {bill.showTax ? <p className="flex justify-between"><span>Tax{totals.rate ? ` (${totals.rate}%)` : ''}</span><span>{money(totals.tax, currency)}</span></p> : null}
-              {bill.showServiceCharge ? <p className="flex justify-between"><span>Service</span><span>{money(totals.service, currency)}</span></p> : null}
-              <p className="flex justify-between font-semibold"><span>Grand Total</span><span>{money(totals.payable, currency)}</span></p>
-              {bill.showPaymentMethod ? <p>Paid: Cash + UPI</p> : null}
-              {bill.showSplitPayments ? <p className="text-muted">Cash {money(200, currency)} · UPI {money(totals.payable - 200, currency)}</p> : null}
-              {bill.showUpiInfo && upi?.upi_id ? <p className="text-muted">UPI {upi.display_name || upi.upi_id}</p> : null}
-            </div>
-            {bill.showFooter ? <p className="mt-2 text-center text-[11px] text-muted">{bill.footer || form.thank_you_message || bill.thankYou}</p> : null}
-          </Ticket>
+          <BillPreviewTicket form={form} accent={accent} />
         ) : null}
 
         {tab === 'mini' ? (

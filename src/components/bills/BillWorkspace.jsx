@@ -116,6 +116,9 @@ export default function BillWorkspace({
   onCollect,
   onMerge,
   onTransfer,
+  onPrint,
+  onPdf,
+  printBusy,
 }) {
   const [tab, setTab] = useState('orders')
   const [moreOpen, setMoreOpen] = useState(false)
@@ -366,6 +369,16 @@ export default function BillWorkspace({
             <Button variant="secondary" className="rounded-xl shadow-sm" onClick={onRefresh}>
               Refresh
             </Button>
+            {view.bill ? (
+              <>
+                <Button variant="secondary" className="rounded-xl shadow-sm" disabled={printBusy} onClick={() => onPrint?.({ reprint: view.status === 'paid' })}>
+                  {printBusy ? 'Opening...' : view.status === 'paid' ? 'Reprint Bill' : 'Print Bill'}
+                </Button>
+                <Button variant="secondary" className="rounded-xl shadow-sm" onClick={() => onPdf?.()}>
+                  PDF
+                </Button>
+              </>
+            ) : null}
             <div className="relative">
               <Button
                 variant="secondary"

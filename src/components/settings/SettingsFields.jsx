@@ -9,6 +9,11 @@ import {
   WEEKDAYS,
 } from '../../lib/restaurantSettings'
 import {
+  BILL_ALIGNMENTS,
+  BILL_FONT_SIZES,
+  BILL_TEMPLATES,
+} from '../../lib/billPrint'
+import {
   ORDER_TYPES,
   connectionLabel,
   emptyPrinter,
@@ -357,7 +362,35 @@ export function BillFields({ form, set }) {
   const bill = form.bill || {}
   return (
     <div className="space-y-5">
-      <AlertNote>Bill layout is configuration only. Historical bills stay as stored.</AlertNote>
+      <AlertNote>Bill layout is configuration only. Historical bills stay as stored and are never recalculated.</AlertNote>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Template">
+          <select className={selectClass} value={bill.template || 'thermal'} onChange={(e) => set('bill', { ...bill, template: e.target.value })}>
+            {BILL_TEMPLATES.map((row) => (
+              <option key={row.id} value={row.id}>{row.label}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Font size">
+          <select className={selectClass} value={bill.fontSize || 'normal'} onChange={(e) => set('bill', { ...bill, fontSize: e.target.value })}>
+            {BILL_FONT_SIZES.map((row) => (
+              <option key={row.id} value={row.id}>{row.label}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Alignment">
+          <select className={selectClass} value={bill.alignment || 'center'} onChange={(e) => set('bill', { ...bill, alignment: e.target.value })}>
+            {BILL_ALIGNMENTS.map((row) => (
+              <option key={row.id} value={row.id}>{row.label}</option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Toggle checked={bill.autoPrintOnSettle !== false} onChange={(value) => set('bill', { ...bill, autoPrintOnSettle: value })} label="Auto-print after settlement" hint="Opens the browser print dialog only after a bill is fully paid." />
+        <Toggle checked={bill.printSplitReceipt !== false} onChange={(value) => set('bill', { ...bill, printSplitReceipt: value })} label="Print split receipt" hint="Also print a receipt copy when a bill is paid with more than one method." />
+        <Toggle checked={bill.printMerchantCopy} onChange={(value) => set('bill', { ...bill, printMerchantCopy: value })} label="Print merchant copy" hint="Print a second copy when a receipt printer is assigned." />
+      </div>
       <FlagGrid
         value={bill}
         onChange={(next) => set('bill', next)}
@@ -370,19 +403,23 @@ export function BillFields({ form, set }) {
           { id: 'showEmail', label: 'Email' },
           { id: 'showGstin', label: 'GSTIN' },
           { id: 'showBillNumber', label: 'Bill number' },
+          { id: 'showDateTime', label: 'Date and time' },
           { id: 'showTable', label: 'Table' },
           { id: 'showWaiter', label: 'Waiter' },
           { id: 'showGuestCount', label: 'Guest count' },
           { id: 'showItemCode', label: 'Item code' },
           { id: 'showItemName', label: 'Item name' },
           { id: 'showVariants', label: 'Variants' },
+          { id: 'showItemNotes', label: 'Item notes' },
           { id: 'showDiscount', label: 'Discount' },
           { id: 'showTax', label: 'Tax' },
+          { id: 'showTaxBreakdown', label: 'CGST / SGST breakdown' },
           { id: 'showServiceCharge', label: 'Service charge' },
           { id: 'showPaymentMethod', label: 'Payment method' },
           { id: 'showSplitPayments', label: 'Split payment breakdown' },
           { id: 'showUpiInfo', label: 'UPI info' },
           { id: 'showFooter', label: 'Footer' },
+          { id: 'showReprintLabel', label: 'Reprint label' },
         ]}
       />
       <Field label="Bill header">
@@ -433,6 +470,8 @@ export function PrinterFields({ form, set, restaurant }) {
       if (i !== index) {
         if (next.is_default_kot && item.is_default_kot) return { ...item, is_default_kot: false }
         if (next.is_default_kitchen && item.is_default_kitchen) return { ...item, is_default_kitchen: false }
+        if (next.is_default_bill && item.is_default_bill) return { ...item, is_default_bill: false }
+        if (next.is_default_receipt && item.is_default_receipt) return { ...item, is_default_receipt: false }
         return item
       }
       return { ...item, ...next }
@@ -542,8 +581,8 @@ export function PrinterFields({ form, set, restaurant }) {
                   <select className={selectClass} value={row.use_for || 'kot'} onChange={(e) => patch(index, { use_for: e.target.value })}>
                     <option value="kot">KOT</option>
                     <option value="kitchen">Kitchen</option>
-                    <option value="bill">Bill (Phase 18)</option>
-                    <option value="receipt">Receipt (Phase 18)</option>
+                    <option value="bill">Bill</option>
+                    <option value="receipt">Receipt</option>
                   </select>
                 </Field>
               </div>
@@ -562,17 +601,16 @@ export function PrinterFields({ form, set, restaurant }) {
               ) : (
                 <p className="text-[11px] text-muted">{connectionLabel(row.connection_type)} opens the browser or system print dialog.</p>
               )}
-              {(row.use_for === 'bill' || row.use_for === 'receipt') ? (
-                <p className="text-[11px] text-muted">Bill and receipt printing is reserved for Phase 18.</p>
-              ) : null}
               <div className="grid gap-2 sm:grid-cols-2">
                 <Toggle checked={row.is_active !== false} onChange={(value) => patch(index, { is_active: value })} label="Active" />
                 <Toggle checked={row.is_default_kot} onChange={(value) => patch(index, { is_default_kot: value, use_for: value ? 'kot' : row.use_for })} label="Default KOT printer" />
+                <Toggle checked={row.is_default_bill} onChange={(value) => patch(index, { is_default_bill: value, use_for: value ? 'bill' : row.use_for })} label="Default bill printer" />
+                <Toggle checked={row.is_default_receipt} onChange={(value) => patch(index, { is_default_receipt: value, use_for: value ? 'receipt' : row.use_for })} label="Default receipt printer" />
               </div>
               <button
                 type="button"
                 className="text-sm font-medium text-forest"
-                disabled={Boolean(testingId) || row.use_for === 'bill' || row.use_for === 'receipt'}
+                disabled={Boolean(testingId)}
                 onClick={() => onTest(row, index)}
               >
                 {testingId === printerKey(row, index) ? 'Opening print dialog...' : 'Test print'}

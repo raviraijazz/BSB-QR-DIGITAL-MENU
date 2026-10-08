@@ -1,50 +1,63 @@
+import { buildBillDocument, billFlags, downloadBillPdf, printBillDocument, sampleBillDocument } from '../lib/billPrint'
 import { firstRelated } from '../lib/orderCart'
 import { buildKotTicketHtml, printKotTickets } from '../lib/kotPrint'
 import {
+  backupBillPrinter,
+  defaultBillPrinter,
   defaultKotPrinter,
+  defaultReceiptPrinter,
   kotItemsWithMenu,
   normalizePrinters,
   normalizeRoutes,
   resolveOrderType,
   routeKotItems,
 } from '../lib/printerRouting'
-import { defaultKot } from '../lib/restaurantSettings'
+import { defaultBill, defaultKot } from '../lib/restaurantSettings'
 import { supabase } from '../lib/supabase'
 import { listCategories } from './categories'
 import { markKotPrinted } from './kots'
 import { listMenuItems } from './menuItems'
+import { listSessionOrders } from './waiterOrders'
 
-function friendlyPrintError(error) {
+function friendlyPrintError(error, kind = 'kot') {
   if (!error) return error
   const text = String(error.message || '').toLowerCase()
   if (text.includes('does not exist') || text.includes('schema cache') || text.includes('could not find')) {
+    if (kind === 'bill' || text.includes('bill_id')) {
+      return { message: 'Bill printing is not ready. Run supabase/bill-printing.sql in the SQL Editor.' }
+    }
     return { message: 'KOT printing is not ready. Run supabase/kot-printing.sql in the SQL Editor.' }
   }
   if (text.includes('row-level security') || text.includes('not allowed')) {
     return { message: 'Unable to record the print job. Please try again.' }
   }
-  return { message: 'Unable to print kitchen ticket. Please try again.' }
+  return { message: kind === 'bill' ? 'Unable to print bill. Please try again.' : 'Unable to print kitchen ticket. Please try again.' }
 }
 
 export async function loadPrintConfig(restaurantId) {
   if (!restaurantId) {
-    return { printers: [], routes: [], kot: defaultKot(), orders: {}, error: null }
+    return { printers: [], routes: [], kot: defaultKot(), bill: defaultBill(), settings: {}, payments: [], orders: {}, error: null }
   }
-  const [printers, routes, settings] = await Promise.all([
+  const [printers, routes, settings, payments] = await Promise.all([
     supabase.from('restaurant_printer_profiles').select('*').eq('restaurant_id', restaurantId).order('created_at'),
     supabase.from('restaurant_printer_routes').select('*').eq('restaurant_id', restaurantId).order('created_at'),
-    supabase.from('restaurant_settings').select('kot, orders').eq('restaurant_id', restaurantId).maybeSingle(),
+    supabase.from('restaurant_settings').select('kot, orders, bill, gstin, owner_name, email, city, state, pin, thank_you_message, timezone, currency').eq('restaurant_id', restaurantId).maybeSingle(),
+    supabase.from('restaurant_payment_methods').select('method, is_enabled, upi_id, display_name').eq('restaurant_id', restaurantId),
   ])
   const missing = [printers.error, routes.error, settings.error].find((error) => {
     const text = String(error?.message || '').toLowerCase()
     return text.includes('does not exist') || text.includes('schema cache')
   })
+  const kind = String(missing?.message || '').toLowerCase().includes('bill') ? 'bill' : 'kot'
   return {
     printers: normalizePrinters(printers.data || []),
     routes: routes.error ? [] : normalizeRoutes(routes.data || []),
     kot: { ...defaultKot(), ...(settings.data?.kot || {}) },
+    bill: { ...defaultBill(), ...(settings.data?.bill || {}) },
+    settings: settings.data || {},
+    payments: payments.error ? [] : (payments.data || []),
     orders: settings.data?.orders || {},
-    error: missing ? friendlyPrintError(missing) : null,
+    error: missing ? friendlyPrintError(missing, kind) : null,
   }
 }
 
@@ -138,6 +151,91 @@ async function queueKotJob({ restaurantId, kot, printer, reprint, payload }) {
   return { data: null, skipped: false, error: friendlyPrintError(inserted.error) }
 }
 
+async function findExistingBillJob(restaurantId, billId, printerId, printType) {
+  const { data, error } = await supabase
+    .from('restaurant_print_jobs')
+    .select('*')
+    .eq('restaurant_id', restaurantId)
+    .eq('bill_id', billId)
+    .eq('print_type', printType)
+    .eq('is_reprint', false)
+    .order('created_at', { ascending: false })
+    .limit(8)
+  if (error) return { data: null, error }
+  return { data: (data || []).find((row) => !printerId || row.printer_id === printerId) || data?.[0] || null, error: null }
+}
+
+async function queueBillJob({ restaurantId, bill, printer, reprint, printType, payload }) {
+  const row = {
+    restaurant_id: restaurantId,
+    kot_id: null,
+    bill_id: bill.id,
+    printer_id: printer?.id || null,
+    print_type: printType,
+    status: 'queued',
+    is_reprint: Boolean(reprint),
+    copies: 1,
+    payload: payload || {},
+  }
+  if (!reprint) {
+    const existing = await findExistingBillJob(restaurantId, bill.id, printer?.id || null, printType)
+    if (existing.error) {
+      const text = String(existing.error.message || '').toLowerCase()
+      if (text.includes('bill_id') && (text.includes('does not exist') || text.includes('schema cache'))) {
+        return { data: { ...row, id: null }, skipped: false, error: null }
+      }
+    }
+    if (existing.data?.status === 'printed') return { data: existing.data, skipped: true, error: null }
+    if (existing.data?.id && existing.data.status !== 'printed') {
+      const updated = await updateJob(existing.data.id, restaurantId, {
+        status: 'queued',
+        error_message: '',
+        payload: payload || existing.data.payload || {},
+      })
+      return { data: updated.data || existing.data, skipped: false, error: null }
+    }
+  }
+  const inserted = await insertJob(row)
+  if (!inserted.error) return { data: inserted.data, skipped: false, error: null }
+  if (!reprint && duplicateJob(inserted.error)) {
+    const existing = await findExistingBillJob(restaurantId, bill.id, printer?.id || null, printType)
+    if (existing.data?.status === 'printed') return { data: existing.data, skipped: true, error: null }
+    if (existing.data?.id) return { data: existing.data, skipped: false, error: null }
+    return { data: null, skipped: true, error: null }
+  }
+  const text = String(inserted.error.message || '').toLowerCase()
+  if (text.includes('does not exist') || text.includes('schema cache')) {
+    return { data: { ...row, id: null }, skipped: false, error: null }
+  }
+  return { data: null, skipped: false, error: friendlyPrintError(inserted.error, 'bill') }
+}
+
+function printModeFor(doc, printer) {
+  const template = doc.template || 'thermal'
+  if (template === 'a5' || template === 'pdf' || printer?.paper_width === 'a4') return 'a5'
+  return 'thermal'
+}
+
+function mergePrintSettings(restaurant, config) {
+  return {
+    name: restaurant?.name,
+    logo_url: restaurant?.logo_url,
+    address: restaurant?.address,
+    phone: restaurant?.phone,
+    timezone: restaurant?.timezone || config.settings?.timezone,
+    currency: restaurant?.currency || config.settings?.currency,
+    gstin: config.settings?.gstin,
+    owner_name: config.settings?.owner_name,
+    email: config.settings?.email,
+    city: config.settings?.city,
+    state: config.settings?.state,
+    pin: config.settings?.pin,
+    thank_you_message: config.settings?.thank_you_message,
+    bill: config.bill,
+    payments: config.payments || restaurant?.payments,
+  }
+}
+
 async function finishJob(job, restaurantId, ok, message) {
   if (!job?.id) return
   await updateJob(job.id, restaurantId, {
@@ -149,29 +247,7 @@ async function finishJob(job, restaurantId, ok, message) {
 
 export async function printTestTicket({ restaurant, printer, settings }) {
   if (!printer) return { error: { message: 'Select a printer first.' } }
-  if (printer.use_for === 'bill' || printer.use_for === 'receipt') {
-    return { error: { message: 'Bill and receipt printing is not enabled yet.' } }
-  }
-  const sampleKot = {
-    kot_number: '104',
-    kot_type: 'new',
-    created_at: new Date().toISOString(),
-  }
-  const items = [
-    { item_name: 'Veg Biryani (Full)', quantity: 1, notes: 'Less spicy', variant_name: 'Full' },
-    { item_name: 'Paneer Tikka', quantity: 1, notes: '' },
-  ]
-  const html = buildKotTicketHtml({
-    restaurant,
-    kot: sampleKot,
-    items,
-    tableLabel: 'Table 4',
-    waiter: { full_name: 'Vijay Pandey', waiter_id: 'W01' },
-    order: { order_number: '003', order_type: 'dine_in' },
-    printer,
-    settings,
-    reprint: false,
-  })
+  const isBill = printer.use_for === 'bill' || printer.use_for === 'receipt' || printer.is_default_bill || printer.is_default_receipt
   if (restaurant?.id && printer.id) {
     await insertJob({
       restaurant_id: restaurant.id,
@@ -181,10 +257,44 @@ export async function printTestTicket({ restaurant, printer, settings }) {
       status: 'queued',
       is_reprint: false,
       copies: 1,
-      payload: { sample: true },
+      payload: { sample: true, kind: isBill ? 'bill' : 'kot' },
     })
   }
   try {
+    if (isBill) {
+      const doc = sampleBillDocument({
+        ...settings,
+        name: settings?.name || restaurant?.name,
+        logo_url: settings?.logo_url || restaurant?.logo_url,
+        address: settings?.address || restaurant?.address,
+        phone: settings?.phone || restaurant?.phone,
+      })
+      doc.paperWidth = printer.paper_width || '80mm'
+      doc.template = printer.use_for === 'receipt' ? 'thermal' : (billFlags(settings).template || 'thermal')
+      const mode = doc.template === 'a5' || printer.paper_width === 'a4' ? 'a5' : 'thermal'
+      await printBillDocument(doc, mode)
+      return { error: null }
+    }
+    const sampleKot = {
+      kot_number: '104',
+      kot_type: 'new',
+      created_at: new Date().toISOString(),
+    }
+    const items = [
+      { item_name: 'Veg Biryani (Full)', quantity: 1, notes: 'Less spicy', variant_name: 'Full' },
+      { item_name: 'Paneer Tikka', quantity: 1, notes: '' },
+    ]
+    const html = buildKotTicketHtml({
+      restaurant,
+      kot: sampleKot,
+      items,
+      tableLabel: 'Table 4',
+      waiter: { full_name: 'Vijay Pandey', waiter_id: 'W01' },
+      order: { order_number: '003', order_type: 'dine_in' },
+      printer,
+      settings,
+      reprint: false,
+    })
     await printKotTickets([{ html, printer }])
     return { error: null }
   } catch (error) {
@@ -293,8 +403,165 @@ export async function printCommittedKot({
   }
 }
 
-export async function retryPrintJob({ restaurant, job, order, kot, table, tableLabel, waiter }) {
+export function latestJobForKot(jobs, kotId) {
+  return (jobs || []).find((job) => job.kot_id === kotId && job.print_type === 'kot') || null
+}
+
+export function latestJobForBill(jobs, billId) {
+  return (jobs || []).find((job) => job.bill_id === billId && (job.print_type === 'bill' || job.print_type === 'receipt')) || null
+}
+
+export async function printSettledBill({
+  restaurant,
+  bill,
+  orders,
+  payments,
+  table,
+  tableLabel,
+  waiter,
+  reprint = false,
+  auto = false,
+}) {
+  if (!restaurant?.id || !bill?.id) return { printed: false, skipped: true, error: null, jobs: [] }
+  let sessionOrders = orders
+  if (bill.session_id) {
+    const loaded = await listSessionOrders(restaurant.id, bill.session_id)
+    if (!loaded.error && loaded.data?.length) sessionOrders = loaded.data
+  }
+  const config = await loadPrintConfig(restaurant.id)
+  const flags = billFlags({ bill: config.bill })
+  if (auto && flags.autoPrintOnSettle === false) {
+    return { printed: false, skipped: true, error: null, jobs: [], reason: 'auto-off' }
+  }
+  const settings = mergePrintSettings(restaurant, config)
+  const printers = config.printers
+  const billPrinter = defaultBillPrinter(printers)
+  const receiptPrinter = defaultReceiptPrinter(printers)
+  const backup = backupBillPrinter(printers, billPrinter)
+  const targets = []
+  if (billPrinter) targets.push({ printer: billPrinter, printType: 'bill' })
+  const wantReceipt = flags.printSplitReceipt !== false && (payments || []).length > 1
+  const wantMerchant = Boolean(flags.printMerchantCopy)
+  if ((wantReceipt || wantMerchant) && receiptPrinter && receiptPrinter.id !== billPrinter?.id) {
+    targets.push({ printer: receiptPrinter, printType: 'receipt' })
+  }
+  if (!targets.length && backup) targets.push({ printer: backup, printType: 'bill' })
+  if (!targets.length) {
+    const fallback = {
+      name: 'Browser print',
+      connection_type: 'browser',
+      paper_width: '80mm',
+      use_for: 'bill',
+    }
+    targets.push({ printer: fallback, printType: 'bill' })
+  }
+
+  const tickets = []
+  const jobs = []
+  for (const target of targets) {
+    const queued = await queueBillJob({
+      restaurantId: restaurant.id,
+      bill,
+      printer: target.printer,
+      reprint,
+      printType: target.printType,
+      payload: {
+        bill_number: bill.bill_number,
+        printer_name: target.printer?.name || '',
+      },
+    })
+    if (queued.skipped) continue
+    if (queued.error) return { printed: false, skipped: false, error: queued.error, jobs }
+    const doc = buildBillDocument({
+      restaurant,
+      settings,
+      bill,
+      orders: sessionOrders,
+      payments,
+      table,
+      tableLabel,
+      waiter,
+      reprint,
+      paperWidth: target.printer?.paper_width || '80mm',
+      template: target.printType === 'receipt' ? 'thermal' : flags.template,
+    })
+    tickets.push({ doc, printer: target.printer, job: queued.data, mode: printModeFor(doc, target.printer) })
+    jobs.push(queued.data)
+  }
+
+  if (!tickets.length) return { printed: true, skipped: true, error: null, jobs }
+
+  let anyOk = false
+  let lastError = null
+  for (const ticket of tickets) {
+    try {
+      await printBillDocument(ticket.doc, ticket.mode)
+      anyOk = true
+      await finishJob(ticket.job, restaurant.id, true)
+    } catch (error) {
+      lastError = error
+      await finishJob(ticket.job, restaurant.id, false, error?.message)
+    }
+  }
+  return {
+    printed: anyOk,
+    skipped: false,
+    error: anyOk ? null : { message: lastError?.message || 'Unable to open the print dialog.' },
+    jobs,
+  }
+}
+
+export async function reprintBill(args) {
+  return printSettledBill({ ...args, reprint: true, auto: false })
+}
+
+export async function downloadBillPdfFile({ restaurant, bill, orders, payments, table, tableLabel, waiter, reprint = false }) {
+  if (!bill) return { error: { message: 'No bill to download.' } }
+  let sessionOrders = orders
+  if (restaurant?.id && bill.session_id) {
+    const loaded = await listSessionOrders(restaurant.id, bill.session_id)
+    if (!loaded.error && loaded.data?.length) sessionOrders = loaded.data
+  }
+  const config = restaurant?.id ? await loadPrintConfig(restaurant.id) : { bill: defaultBill(), settings: {}, printers: [] }
+  const settings = mergePrintSettings(restaurant, config)
+  const flags = billFlags({ bill: config.bill })
+  const doc = buildBillDocument({
+    restaurant,
+    settings,
+    bill,
+    orders: sessionOrders,
+    payments,
+    table,
+    tableLabel,
+    waiter,
+    reprint,
+    paperWidth: 'a5',
+    template: 'pdf',
+  })
+  doc.flags = { ...flags, ...doc.flags }
+  try {
+    const filename = await downloadBillPdf(doc)
+    return { filename, error: null }
+  } catch (error) {
+    return { error: { message: error?.message || 'Unable to download PDF.' } }
+  }
+}
+
+export async function retryPrintJob({ restaurant, job, order, kot, table, tableLabel, waiter, bill, orders, payments }) {
   if (!job) return { error: { message: 'Print job not found.' } }
+  if (job.print_type === 'bill' || job.print_type === 'receipt') {
+    return printSettledBill({
+      restaurant,
+      bill,
+      orders,
+      payments,
+      table,
+      tableLabel,
+      waiter,
+      reprint: Boolean(job.is_reprint) || job.status === 'printed' || job.status === 'failed',
+      auto: false,
+    })
+  }
   const reprint = Boolean(job.is_reprint) || job.status === 'printed'
   return printCommittedKot({
     restaurant,
@@ -305,8 +572,4 @@ export async function retryPrintJob({ restaurant, job, order, kot, table, tableL
     waiter,
     reprint: reprint || job.status === 'failed',
   })
-}
-
-export function latestJobForKot(jobs, kotId) {
-  return (jobs || []).find((job) => job.kot_id === kotId && job.print_type === 'kot') || null
 }

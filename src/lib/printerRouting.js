@@ -91,6 +91,41 @@ export function defaultKotPrinter(printers) {
   return rows.find((row) => row.is_default_kot) || rows.find((row) => row.is_default_kitchen) || rows[0] || null
 }
 
+export function isBillPrinter(printer) {
+  if (!printer || printer.is_active === false) return false
+  return printer.use_for === 'bill' || printer.is_default_bill
+}
+
+export function isReceiptPrinter(printer) {
+  if (!printer || printer.is_active === false) return false
+  return printer.use_for === 'receipt' || printer.is_default_receipt
+}
+
+export function activeBillPrinters(printers) {
+  return (printers || []).filter((row) => isBillPrinter(row) || isReceiptPrinter(row))
+}
+
+export function defaultBillPrinter(printers) {
+  const rows = (printers || []).filter((row) => row && row.is_active !== false)
+  return rows.find((row) => row.is_default_bill && isBillPrinter(row))
+    || rows.find(isBillPrinter)
+    || rows.find((row) => row.is_default_receipt)
+    || rows.find(isReceiptPrinter)
+    || null
+}
+
+export function defaultReceiptPrinter(printers) {
+  const rows = (printers || []).filter((row) => row && row.is_active !== false)
+  return rows.find((row) => row.is_default_receipt && isReceiptPrinter(row))
+    || rows.find(isReceiptPrinter)
+    || defaultBillPrinter(printers)
+}
+
+export function backupBillPrinter(printers, primary) {
+  const rows = activeBillPrinters(printers)
+  return rows.find((row) => row.id && row.id !== primary?.id) || null
+}
+
 export function printerLabel(printer) {
   if (!printer) return 'Printer'
   return printer.name || 'Printer'

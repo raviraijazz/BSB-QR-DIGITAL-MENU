@@ -14,6 +14,7 @@ import {
 } from '../../lib/orderHistory'
 import { formatBillMoney, formatQty, kotStatusLabel, kotTypeLabel, paymentMethodLabel } from '../../lib/orderCart'
 import { tableHeading, uniqueTables } from '../../lib/tableToken'
+import { downloadBillPdfFile, printSettledBill } from '../../services/printJobs'
 import NavIcon from '../NavIcon'
 
 const TABS = [
@@ -231,9 +232,14 @@ function SummaryCards({ row, snapshot, restaurant }) {
 
 export default function OrderHistoryDrawer({ row, restaurant, onClose, mobile = false }) {
   const [tab, setTab] = useState('order')
+  const [printBusy, setPrintBusy] = useState(false)
+  const [printNotice, setPrintNotice] = useState('')
+  const [printError, setPrintError] = useState('')
 
   useEffect(() => {
     setTab('order')
+    setPrintNotice('')
+    setPrintError('')
     function onKey(event) {
       if (event.key === 'Escape') onClose?.()
     }
@@ -286,6 +292,57 @@ export default function OrderHistoryDrawer({ row, restaurant, onClose, mobile = 
         >
           View Session
         </button>
+        {printError ? <p className="w-full text-[12px] text-rose-700">{printError}</p> : null}
+        {printNotice ? <p className="w-full text-[12px] text-forest">{printNotice}</p> : null}
+        {row.bill ? (
+          <>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-white px-3 py-1.5 text-[12px] font-medium disabled:opacity-50"
+              disabled={printBusy}
+              onClick={async () => {
+                setPrintBusy(true)
+                setPrintError('')
+                const result = await printSettledBill({
+                  restaurant,
+                  bill: row.bill,
+                  orders: [row.order],
+                  payments: row.payments,
+                  table: row.sourceTable,
+                  tableLabel: tableLine,
+                  waiter: row.waiter,
+                  reprint: true,
+                })
+                setPrintBusy(false)
+                if (result.error) setPrintError(result.error.message)
+                else setPrintNotice(result.printed ? 'Reprint dialog opened. Totals are shown as stored.' : 'Bill already printed.')
+              }}
+            >
+              {printBusy ? 'Opening...' : 'Reprint'}
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-white px-3 py-1.5 text-[12px] font-medium"
+              onClick={async () => {
+                setPrintError('')
+                const result = await downloadBillPdfFile({
+                  restaurant,
+                  bill: row.bill,
+                  orders: [row.order],
+                  payments: row.payments,
+                  table: row.sourceTable,
+                  tableLabel: tableLine,
+                  waiter: row.waiter,
+                  reprint: true,
+                })
+                if (result.error) setPrintError(result.error.message)
+                else setPrintNotice('PDF downloaded from stored bill totals.')
+              }}
+            >
+              PDF
+            </button>
+          </>
+        ) : null}
       </div>
 
       <div className="flex gap-4 overflow-x-auto border-b border-line px-5">

@@ -33,6 +33,7 @@ import { listTables } from '../../../services/tables'
 import { listOpenSessions } from '../../../services/tableSessions'
 import { listRestaurantOrders } from '../../../services/waiterOrders'
 import { listWaiters } from '../../../services/waiters'
+import { downloadBillPdfFile, printSettledBill } from '../../../services/printJobs'
 
 const HIGH_VALUE = 1000
 
@@ -69,6 +70,8 @@ export default function RunningBills() {
   const [moveMode, setMoveMode] = useState('')
   const [moveTableId, setMoveTableId] = useState('')
   const [moveBusy, setMoveBusy] = useState(false)
+  const [printBusy, setPrintBusy] = useState(false)
+  const [printNotice, setPrintNotice] = useState('')
 
   const restaurantId = restaurant?.id
 
@@ -293,15 +296,39 @@ export default function RunningBills() {
 
     setCollecting(false)
     if (settled) {
+      const tableLabel = selected.sessionTables?.length
+        ? sessionTablesLabel(selected.sessionTables, { compact: true })
+        : selected.table
+          ? tableHeading(selected.table)
+          : 'Table'
       setSuccess({
         table: selected.table,
         sessionTables: selected.sessionTables,
         session: selected.session,
         payable: selected.payable,
         payments: recorded,
+        bill: lastBill,
+        orders: selected.orders,
+        waiter: selected.waiter,
+        tableLabel,
       })
+      setPrintNotice('')
       setSelectedId('')
       load(true)
+      printSettledBill({
+        restaurant,
+        bill: lastBill,
+        orders: selected.orders,
+        payments: recorded,
+        table: selected.table,
+        tableLabel,
+        waiter: selected.waiter,
+        auto: true,
+      }).then((result) => {
+        if (result.skipped && result.reason === 'auto-off') return
+        if (result.error) setPrintNotice(result.error.message)
+        else if (result.printed) setPrintNotice('Bill print dialog opened.')
+      })
       return
     }
     setNotice(queue.length > 1 ? 'Split payments recorded.' : 'Payment recorded.')
@@ -441,7 +468,49 @@ export default function RunningBills() {
               ))}
             </ul>
             <p className="mt-4 rounded-xl bg-forest/10 px-3 py-2 text-center text-sm font-medium text-forest">Table Session Closed</p>
+            {printNotice ? <p className="mt-3 text-center text-sm text-muted">{printNotice}</p> : null}
             <div className="mt-5 flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                disabled={printBusy || !success.bill}
+                onClick={async () => {
+                  if (!success.bill || printBusy) return
+                  setPrintBusy(true)
+                  const result = await printSettledBill({
+                    restaurant,
+                    bill: success.bill,
+                    orders: success.orders,
+                    payments: success.payments,
+                    table: success.table,
+                    tableLabel: success.tableLabel,
+                    waiter: success.waiter,
+                    reprint: true,
+                  })
+                  setPrintBusy(false)
+                  if (result.error) setPrintNotice(result.error.message)
+                  else setPrintNotice(result.printed ? 'Reprint dialog opened.' : 'Bill already printed.')
+                }}
+              >
+                {printBusy ? 'Opening...' : 'Print / Reprint'}
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={!success.bill}
+                onClick={async () => {
+                  const result = await downloadBillPdfFile({
+                    restaurant,
+                    bill: success.bill,
+                    orders: success.orders,
+                    payments: success.payments,
+                    table: success.table,
+                    tableLabel: success.tableLabel,
+                    waiter: success.waiter,
+                  })
+                  if (result.error) setPrintNotice(result.error.message)
+                }}
+              >
+                Download PDF
+              </Button>
               <Link to="/dashboard/table-wise/tables">
                 <Button className="bg-forest hover:bg-forest-deep">Floor / Tables</Button>
               </Link>
@@ -471,6 +540,46 @@ export default function RunningBills() {
           onRefresh={() => load()}
           onSave={onSaveDiscount}
           onCollect={onCollectPayment}
+          onPrint={async ({ reprint } = {}) => {
+            if (!selected?.bill || printBusy) return
+            setPrintBusy(true)
+            setPayError('')
+            const result = await printSettledBill({
+              restaurant,
+              bill: selected.bill,
+              orders: selected.orders,
+              payments: selected.payments,
+              table: selected.table,
+              tableLabel: selected.sessionTables?.length
+                ? sessionTablesLabel(selected.sessionTables, { compact: true })
+                : selected.table
+                  ? tableHeading(selected.table)
+                  : 'Table',
+              waiter: selected.waiter,
+              reprint: Boolean(reprint),
+            })
+            setPrintBusy(false)
+            if (result.error) setPayError(result.error.message)
+            else if (result.printed) setNotice(reprint ? 'Reprint dialog opened.' : 'Bill print dialog opened.')
+          }}
+          onPdf={async () => {
+            if (!selected?.bill) return
+            const result = await downloadBillPdfFile({
+              restaurant,
+              bill: selected.bill,
+              orders: selected.orders,
+              payments: selected.payments,
+              table: selected.table,
+              tableLabel: selected.sessionTables?.length
+                ? sessionTablesLabel(selected.sessionTables, { compact: true })
+                : selected.table
+                  ? tableHeading(selected.table)
+                  : 'Table',
+              waiter: selected.waiter,
+            })
+            if (result.error) setPayError(result.error.message)
+          }}
+          printBusy={printBusy}
           onMerge={() => {
             setMoveTableId(selected.table?.id || selected.sessionTables?.[0]?.id || '')
             setMoveMode('merge')

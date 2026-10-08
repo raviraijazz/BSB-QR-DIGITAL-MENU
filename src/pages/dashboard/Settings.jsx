@@ -208,6 +208,11 @@ export default function Settings() {
   }, [restaurant?.id, restaurant?.slug])
 
   useEffect(() => {
+    if (section === 'bill') setPreviewTab('bill')
+    if (section === 'kot') setPreviewTab('kot')
+  }, [section])
+
+  useEffect(() => {
     if (!toast) return
     const timer = setTimeout(() => setToast(''), 2200)
     return () => clearTimeout(timer)
