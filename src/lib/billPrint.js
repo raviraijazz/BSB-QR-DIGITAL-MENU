@@ -28,6 +28,10 @@ export function billFlags(settings) {
   return { ...defaultBill(), ...(settings?.bill || {}) }
 }
 
+export function skipAutoPrint(auto, settings) {
+  return Boolean(auto) && billFlags(settings).autoPrintOnSettle === false
+}
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')

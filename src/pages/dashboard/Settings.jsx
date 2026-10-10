@@ -7,6 +7,7 @@ import EmptyState from '../../components/EmptyState'
 import Field, { inputClass } from '../../components/Field'
 import Spinner from '../../components/Spinner'
 import SettingsPreview from '../../components/settings/SettingsPreview'
+import SystemReadiness from '../../components/settings/SystemReadiness'
 import {
   AdvancedFields,
   BillFields,
@@ -173,6 +174,7 @@ function sectionBody(section, props) {
   if (section === 'notifications') return <NotificationFields {...props} />
   if (section === 'security') return <SecurityFields {...props} />
   if (section === 'advanced') return <AdvancedFields {...props} />
+  if (section === 'readiness') return <SystemReadiness restaurant={props.restaurant} user={props.user} />
   return null
 }
 
@@ -350,6 +352,7 @@ export default function Settings() {
     onMark: (event) => onUpload(event, 'mark_url', `mark-${restaurant.id}`),
     onRemoveLogo: () => set('logo_url', ''),
     onRemoveMark: () => set('mark_url', ''),
+    user,
   }
 
   return (
@@ -369,9 +372,13 @@ export default function Settings() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" className="lg:hidden" onClick={() => setNavOpen((open) => !open)}>Sections</Button>
-          <Button variant="secondary" disabled={!dirty || saving} onClick={onCancel}>Cancel</Button>
-          <Button variant="secondary" disabled={saving} onClick={onResetSection}>Reset section</Button>
-          <Button disabled={!dirty || saving} onClick={onSave}>{saving ? 'Saving...' : 'Save Changes'}</Button>
+          {section !== 'readiness' ? (
+            <>
+              <Button variant="secondary" disabled={!dirty || saving} onClick={onCancel}>Cancel</Button>
+              <Button variant="secondary" disabled={saving} onClick={onResetSection}>Reset section</Button>
+              <Button disabled={!dirty || saving} onClick={onSave}>{saving ? 'Saving...' : 'Save Changes'}</Button>
+            </>
+          ) : null}
         </div>
       </div>
 

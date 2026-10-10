@@ -1,4 +1,4 @@
-import { buildBillDocument, billFlags, downloadBillPdf, printBillDocument, sampleBillDocument } from '../lib/billPrint'
+import { buildBillDocument, billFlags, downloadBillPdf, printBillDocument, sampleBillDocument, skipAutoPrint } from '../lib/billPrint'
 import { firstRelated } from '../lib/orderCart'
 import { buildKotTicketHtml, printKotTickets } from '../lib/kotPrint'
 import {
@@ -430,7 +430,7 @@ export async function printSettledBill({
   }
   const config = await loadPrintConfig(restaurant.id)
   const flags = billFlags({ bill: config.bill })
-  if (auto && flags.autoPrintOnSettle === false) {
+  if (skipAutoPrint(auto, { bill: config.bill })) {
     return { printed: false, skipped: true, error: null, jobs: [], reason: 'auto-off' }
   }
   const settings = mergePrintSettings(restaurant, config)
@@ -511,8 +511,12 @@ export async function printSettledBill({
   }
 }
 
+export function reprintBillArgs(args) {
+  return { ...args, reprint: true, auto: false }
+}
+
 export async function reprintBill(args) {
-  return printSettledBill({ ...args, reprint: true, auto: false })
+  return printSettledBill(reprintBillArgs(args))
 }
 
 export async function downloadBillPdfFile({ restaurant, bill, orders, payments, table, tableLabel, waiter, reprint = false }) {
