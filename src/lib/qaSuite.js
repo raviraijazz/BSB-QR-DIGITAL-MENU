@@ -224,8 +224,8 @@ const handlers = {
 
   'feat-readiness'() {
     const row = PRIMARY_SECTIONS.find((item) => item.id === 'readiness')
-    if (!row) return fail('System Readiness is not in Settings navigation.')
-    return pass('System Readiness is available under Settings.')
+    if (!row) return fail('Production / Go Live is not in Settings navigation.')
+    return pass('Production / Go Live is available under Settings.')
   },
 
   'int-supabase'() {

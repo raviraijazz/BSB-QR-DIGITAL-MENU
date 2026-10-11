@@ -417,8 +417,12 @@ export default function Settings() {
         <section className="min-w-0 rounded-[18px] border border-line bg-card p-4 shadow-sm sm:p-5">
           <div className="mb-5 flex items-start justify-between gap-3">
             <div>
-              <h2 className="font-display text-2xl">{currentSection.label}</h2>
-              <p className="mt-1 text-sm text-muted">Settings for {restaurant.name}. Saved values stay restaurant-scoped.</p>
+              <h2 className="font-display text-2xl">{section === 'readiness' ? 'Production Environment & Go Live' : currentSection.label}</h2>
+              <p className="mt-1 text-sm text-muted">
+                {section === 'readiness'
+                  ? 'Verify deployment, security, system health and launch readiness.'
+                  : `Settings for ${restaurant.name}. Saved values stay restaurant-scoped.`}
+              </p>
             </div>
           </div>
           {loadBusy ? <Spinner /> : sectionBody(section, fieldProps)}

@@ -8,7 +8,7 @@ export const PRIMARY_SECTIONS = [
   { id: 'printers', label: 'Printer Settings' },
   { id: 'permissions', label: 'Permissions' },
   { id: 'qr', label: 'QR & Ordering' },
-  { id: 'readiness', label: 'System Readiness' },
+  { id: 'readiness', label: 'Production / Go Live' },
 ]
 
 export const MORE_SECTIONS = [

@@ -34,6 +34,13 @@ export function productionGate(results) {
     && row.severity === 'critical'
     && (row.tab === 'security' || row.tab === 'integrity' || row.tab === 'financial' || row.tab === 'deployment')
   ))
+  if (!rows.length) {
+    return {
+      id: 'verify',
+      label: 'Verification Required',
+      detail: 'Run the QA suite. No checks have been executed in this session.',
+    }
+  }
   if (criticalFails.length) {
     return {
       id: 'not-ready',
@@ -41,11 +48,17 @@ export function productionGate(results) {
       detail: `${criticalFails.length} critical check${criticalFails.length === 1 ? '' : 's'} failed.`,
     }
   }
-  if (anyFail.length || criticalWarn.length || coreManual.length) {
+  if (coreManual.length) {
+    return {
+      id: 'verify',
+      label: 'Verification Required',
+      detail: `${coreManual.length} core check${coreManual.length === 1 ? '' : 's'} need manual verification.`,
+    }
+  }
+  if (anyFail.length || criticalWarn.length) {
     const bits = []
     if (anyFail.length) bits.push(`${anyFail.length} failed`)
     if (criticalWarn.length) bits.push(`${criticalWarn.length} critical warning${criticalWarn.length === 1 ? '' : 's'}`)
-    if (coreManual.length) bits.push(`${coreManual.length} core check${coreManual.length === 1 ? '' : 's'} need manual verification`)
     return {
       id: 'warnings',
       label: 'Ready with Warnings',
@@ -62,7 +75,7 @@ export function productionGate(results) {
   }
   return {
     id: 'ready',
-    label: 'Ready',
+    label: 'Ready for Production',
     detail: 'Critical security, integrity, and live checks passed.',
   }
 }

@@ -25,7 +25,7 @@ function pdfText(value) {
 }
 
 export function reportFilename(restaurant, ext) {
-  return `system-readiness-${fileSlug(restaurant?.slug || restaurant?.name || 'restaurant')}-${stamp()}.${ext}`
+  return `go-live-readiness-${fileSlug(restaurant?.slug || restaurant?.name || 'restaurant')}-${stamp()}.${ext}`
 }
 
 const COLUMNS = [
@@ -40,6 +40,7 @@ const COLUMNS = [
 export function downloadQaCsv(restaurant, results, summary) {
   const rows = [
     { tab: 'summary', title: 'Production gate', severity: '', status: summary?.gate?.id || '', message: summary?.gate?.label || '', evidence: summary?.gate?.detail || '' },
+    { tab: 'summary', title: 'Environment', severity: '', status: '', message: String(summary?.runtime?.mode || import.meta.env.MODE || ''), evidence: 'No secrets included' },
     { tab: 'summary', title: 'Score', severity: '', status: `${summary?.score ?? 0}%`, message: `pass ${summary?.counts?.pass || 0} / fail ${summary?.counts?.fail || 0} / warn ${summary?.counts?.warn || 0} / manual ${summary?.counts?.manual || 0}`, evidence: summary?.ranAt || '' },
     ...(results || []),
   ]
@@ -50,7 +51,7 @@ export function downloadQaXlsx(restaurant, results, summary) {
   const counts = summary?.counts || {}
   const summaryRows = [
     [{ value: restaurant?.name || 'Restaurant', kind: 'text' }],
-    [{ value: 'System Readiness', kind: 'text' }],
+    [{ value: 'Production Environment & Go Live', kind: 'text' }],
     [{ value: summary?.gate?.label || '', kind: 'text' }, { value: summary?.gate?.detail || '', kind: 'text' }],
     [{ value: `Score ${summary?.score ?? 0}%`, kind: 'text' }],
     [{ value: `Pass ${counts.pass || 0}`, kind: 'text' }, { value: `Fail ${counts.fail || 0}`, kind: 'text' }, { value: `Warn ${counts.warn || 0}`, kind: 'text' }, { value: `Manual ${counts.manual || 0}`, kind: 'text' }],
@@ -92,7 +93,7 @@ export async function downloadQaPdf(restaurant, results, summary) {
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(8)
     pdf.setTextColor(120, 113, 108)
-    pdf.text('BSB Digital Menu — System Readiness', marginX, footerY)
+    pdf.text('BSB Digital Menu — Production Go Live', marginX, footerY)
     pdf.text(`Page ${page}`, pageW - marginX, footerY, { align: 'right' })
   }
 
@@ -109,7 +110,7 @@ export async function downloadQaPdf(restaurant, results, summary) {
   pdf.text(pdfText(restaurant?.name || 'Restaurant'), marginX, y)
   y += 7
   pdf.setFontSize(12)
-  pdf.text('System Readiness', marginX, y)
+  pdf.text('Production Environment & Go Live', marginX, y)
   y += 6
   pdf.setFont('helvetica', 'normal')
   pdf.setFontSize(10)

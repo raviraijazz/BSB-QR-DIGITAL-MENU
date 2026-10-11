@@ -35,7 +35,7 @@ export const QA_CHECKS = [
   check('feat-collections', 'features', 'Collections route', 'Collections dashboard route is registered.', 'medium', 'code'),
   check('feat-settings', 'features', 'Global settings', 'Restaurant settings row can be loaded.', 'high', 'live'),
   check('feat-print-config', 'features', 'Printer configuration', 'Printer profiles and routes can be loaded.', 'high', 'live'),
-  check('feat-readiness', 'features', 'System Readiness section', 'Settings includes the System Readiness section.', 'low', 'code'),
+  check('feat-readiness', 'features', 'Production / Go Live section', 'Settings includes the Production / Go Live section.', 'low', 'code'),
 
   check('int-supabase', 'integration', 'Supabase client configured', 'Frontend has VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.', 'critical', 'live'),
   check('int-schema-core', 'integration', 'Core schema reachable', 'restaurants, categories, and menu_items are queryable.', 'critical', 'live'),
