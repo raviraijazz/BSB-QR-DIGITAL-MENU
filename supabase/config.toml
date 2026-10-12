@@ -3,3 +3,6 @@ verify_jwt = true
 
 [functions.manage-waiter-password]
 verify_jwt = true
+
+[functions.reset-owner-password]
+verify_jwt = true

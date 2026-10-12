@@ -28,7 +28,7 @@ import {
   WaiterPrefFields,
 } from '../../components/settings/SettingsFields'
 import { useAuth } from '../../hooks/useAuth'
-import { authEmailFromUsername, friendlyAuthError } from '../../lib/auth'
+import { authEmailFromUsername, friendlyAuthError, validateOwnerPasswordReset } from '../../lib/auth'
 import { menuUrl } from '../../lib/menuUrl'
 import {
   ALL_SECTIONS,
@@ -41,6 +41,7 @@ import {
   validateSettings,
 } from '../../lib/restaurantSettings'
 import { supabase } from '../../lib/supabase'
+import { resetOwnerPassword } from '../../services/ownerAuth'
 import { uploadAsset } from '../../lib/upload'
 import { updateSlug } from '../../services/restaurants'
 import { loadRestaurantSettings, saveRestaurantSettings } from '../../services/restaurantSettings'
@@ -80,25 +81,55 @@ function validatePasswordChange({ currentPassword, newPassword, confirmPassword 
 }
 
 function PasswordModal({ open, onClose, username, onSuccess }) {
+  const [mode, setMode] = useState('change')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const resetMode = mode === 'reset'
 
   useEffect(() => {
     if (!open) return
+    setMode('change')
     setCurrentPassword('')
     setNewPassword('')
     setConfirmPassword('')
+    setShowPassword(false)
     setError('')
     setBusy(false)
   }, [open])
 
   if (!open) return null
 
+  function clearFields() {
+    setCurrentPassword('')
+    setNewPassword('')
+    setConfirmPassword('')
+    setShowPassword(false)
+    setError('')
+  }
+
   async function onSubmit(event) {
     event.preventDefault()
+    if (resetMode) {
+      const validation = validateOwnerPasswordReset({ newPassword, confirmPassword })
+      if (validation) {
+        setError(validation)
+        return
+      }
+      setBusy(true)
+      setError('')
+      const { error: resetError } = await resetOwnerPassword({ newPassword, confirmPassword })
+      setBusy(false)
+      if (resetError) {
+        setError(resetError.message)
+        return
+      }
+      onSuccess()
+      return
+    }
     const validation = validatePasswordChange({ currentPassword, newPassword, confirmPassword })
     if (validation) {
       setError(validation)
@@ -132,22 +163,60 @@ function PasswordModal({ open, onClose, username, onSuccess }) {
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-ink/40 p-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="change-password-title">
       <button type="button" className="absolute inset-0" aria-label="Close change password" onClick={onClose} />
       <form onSubmit={onSubmit} className="relative z-10 w-full max-w-md rounded-2xl border border-line bg-card p-5 shadow-lg">
-        <h2 id="change-password-title" className="font-display text-xl">Change Password</h2>
+        <h2 id="change-password-title" className="font-display text-xl">{resetMode ? 'Reset Password' : 'Change Password'}</h2>
+        {resetMode ? (
+          <p className="mt-1 text-sm text-muted">Set a new password for this signed-in owner account. The current password is not required.</p>
+        ) : null}
         <div className="mt-4 space-y-3">
           <Alert>{error}</Alert>
-          <Field label="Current Password">
-            <input className={inputClass} type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
-          </Field>
+          {resetMode ? null : (
+            <Field label="Current Password">
+              <input className={inputClass} type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+            </Field>
+          )}
           <Field label="New Password">
-            <input className={inputClass} type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+            <input className={inputClass} type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
           </Field>
           <Field label="Confirm New Password">
-            <input className={inputClass} type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+            <input className={inputClass} type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
           </Field>
+          <label className="flex items-center gap-2 text-sm text-muted">
+            <input type="checkbox" checked={showPassword} onChange={(e) => setShowPassword(e.target.checked)} />
+            Show password
+          </label>
         </div>
+        {resetMode ? null : (
+          <button
+            type="button"
+            className="mt-3 text-sm text-forest underline-offset-2 hover:underline"
+            onClick={() => {
+              setMode('reset')
+              clearFields()
+            }}
+            disabled={busy}
+          >
+            Forgot your current password?
+          </button>
+        )}
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" disabled={busy}>{busy ? 'Updating...' : 'Update Password'}</Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              if (resetMode) {
+                setMode('change')
+                clearFields()
+                return
+              }
+              onClose()
+            }}
+            disabled={busy}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={busy}>
+            {busy ? (resetMode ? 'Resetting...' : 'Updating...') : resetMode ? 'Reset Password' : 'Update Password'}
+          </Button>
         </div>
       </form>
     </div>

@@ -42,6 +42,14 @@ export function validateWaiterSelfPasswordChange({ currentPassword, newPassword,
   return ''
 }
 
+export function validateOwnerPasswordReset({ newPassword, confirmPassword }) {
+  if (!newPassword) return 'New password required'
+  if (newPassword.length < 8) return 'Password must be at least 8 characters'
+  if (!confirmPassword) return 'Confirm password required'
+  if (newPassword !== confirmPassword) return 'Passwords do not match'
+  return ''
+}
+
 export function normalizePhone(value) {
   return String(value || '').replace(/[\s-]/g, '').trim()
 }
