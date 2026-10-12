@@ -91,6 +91,13 @@ export default function NavIcon({ name, className = 'h-4 w-4' }) {
       </>
     ),
     chevron: <path d="M6 9l6 6 6-6" />,
+    support: (
+      <>
+        <circle cx="12" cy="12" r="8" />
+        <path d="M9.2 9.2a2.8 2.8 0 0 1 5.5.8c0 1.6-2.7 2.1-2.7 3.6" />
+        <path d="M12 17.2h.01" />
+      </>
+    ),
     settings: (
       <>
         <circle cx="12" cy="12" r="3" />

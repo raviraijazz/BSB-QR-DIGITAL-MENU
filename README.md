@@ -15,7 +15,7 @@ VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-  2. In the Supabase SQL Editor, run `supabase/schema.sql`. Existing projects that already have tables can run `supabase/restaurant-tables-fields.sql` to add table number and active status. For table-wise order (Phase 1 database only), run `supabase/table-wise-order-fixed.sql`. If that already ran with `waiters.auth_user_id` required, also run `supabase/waiters-nullable-auth.sql`. For one waiter per table, run `supabase/waiter-table-unique.sql`. For waiter login, run `supabase/waiter-auth.sql` and deploy `supabase/functions/provision-waiter` with `SUPABASE_SERVICE_ROLE_KEY` set only on the function. For global restaurant settings, run `supabase/restaurant-settings.sql`. For KOT printing and printer routing, run `supabase/kot-printing.sql`. For customer bill and receipt printing, run `supabase/bill-printing.sql`. System Readiness / Production Go Live lives under Settings and runs live restaurant-scoped checks; it does not recreate tables, expose secrets, or deploy from the browser.
+  2. In the Supabase SQL Editor, run `supabase/schema.sql`. Existing projects that already have tables can run `supabase/restaurant-tables-fields.sql` to add table number and active status. For table-wise order (Phase 1 database only), run `supabase/table-wise-order-fixed.sql`. If that already ran with `waiters.auth_user_id` required, also run `supabase/waiters-nullable-auth.sql`. For one waiter per table, run `supabase/waiter-table-unique.sql`. For waiter login, run `supabase/waiter-auth.sql` and deploy `supabase/functions/provision-waiter` with `SUPABASE_SERVICE_ROLE_KEY` set only on the function. For global restaurant settings, run `supabase/restaurant-settings.sql`. For KOT printing and printer routing, run `supabase/kot-printing.sql`. For customer bill and receipt printing, run `supabase/bill-printing.sql`. For restaurant Support & Maintenance, run `supabase/restaurant-support.sql`. System Readiness / Production Go Live lives under Settings and runs live restaurant-scoped checks; it does not recreate tables, expose secrets, or deploy from the browser. Support is restaurant-owner only and is not a platform admin panel.
 
 3. Install and start:
 
@@ -28,6 +28,6 @@ npm run dev
 
 Public: `/`, `/login`, `/signup`, `/menu/:slug`, `/waiter/login`
 
-Dashboard: `/dashboard`, `/dashboard/restaurant`, `/dashboard/categories`, `/dashboard/menu`, `/dashboard/table-wise`, `/dashboard/table-wise/tables`, `/dashboard/table-wise/waiters`, `/dashboard/qr`, `/dashboard/settings`
+Dashboard: `/dashboard`, `/dashboard/restaurant`, `/dashboard/categories`, `/dashboard/menu`, `/dashboard/table-wise`, `/dashboard/table-wise/tables`, `/dashboard/table-wise/waiters`, `/dashboard/qr`, `/dashboard/support`, `/dashboard/settings`
 
 Waiter: `/waiter`

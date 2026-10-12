@@ -14,8 +14,9 @@ const topLinks = [
 ]
 
 const bottomLinks = [
-  { to: '/dashboard/qr', label: 'QR Studio', icon: 'qr' },
   { to: '/dashboard/settings', label: 'Settings', icon: 'settings' },
+  { to: '/dashboard/qr', label: 'QR Studio', icon: 'qr' },
+  { to: '/dashboard/support', label: 'Support', icon: 'support' },
 ]
 
 function navClass(isActive) {
