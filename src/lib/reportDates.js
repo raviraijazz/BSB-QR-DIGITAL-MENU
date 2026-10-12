@@ -10,6 +10,38 @@ export function tzOffsetMinutes(value = new Date()) {
   return -new Date(value).getTimezoneOffset()
 }
 
+export function tzOffsetMinutesForZone(timeZone, value = new Date()) {
+  const date = new Date(value)
+  if (!timeZone) return tzOffsetMinutes(date)
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).formatToParts(date)
+    const map = {}
+    for (const part of parts) {
+      if (part.type !== 'literal') map[part.type] = part.value
+    }
+    const asUtc = Date.UTC(
+      Number(map.year),
+      Number(map.month) - 1,
+      Number(map.day),
+      Number(map.hour),
+      Number(map.minute),
+      Number(map.second),
+    )
+    return Math.round((asUtc - date.getTime()) / 60000)
+  } catch {
+    return tzOffsetMinutes(date)
+  }
+}
+
 export function startOfLocalDay(value = new Date()) {
   const date = new Date(value)
   date.setHours(0, 0, 0, 0)

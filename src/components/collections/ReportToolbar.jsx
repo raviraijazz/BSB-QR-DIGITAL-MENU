@@ -60,6 +60,8 @@ export default function ReportToolbar({
   saving,
   views,
   extraFilters,
+  showTypes = true,
+  showRange = true,
 }) {
   const [saveName, setSaveName] = useState('')
   const [open, setOpen] = useState({ filters: true, group: false, columns: false, saved: false })
@@ -77,39 +79,45 @@ export default function ReportToolbar({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {REPORT_TYPES.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            onClick={() => onChange({ ...config, reportType: option.id })}
-            className={CHIP(type === option.id)}
-            title={option.hint}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-      <p className="text-xs text-muted">{meta.hint}</p>
-
-      <div className="flex flex-wrap items-center gap-1.5">
-        {REPORT_RANGE_PRESETS.map((preset) => (
-          <button key={preset.id} type="button" onClick={() => onRange(preset.id)} className={RANGE_CHIP(config.rangePreset === preset.id)}>
-            {preset.label}
-          </button>
-        ))}
-        {config.rangePreset === 'custom' ? (
-          <div className="flex flex-wrap items-center gap-2 pl-1">
-            <Field label="">
-              <input type="date" className={`${inputClass} py-1.5`} value={customFrom} max={customTo} onChange={(event) => onCustomFrom(event.target.value)} />
-            </Field>
-            <span className="text-muted">to</span>
-            <Field label="">
-              <input type="date" className={`${inputClass} py-1.5`} value={customTo} min={customFrom} onChange={(event) => onCustomTo(event.target.value)} />
-            </Field>
+      {showTypes ? (
+        <>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {REPORT_TYPES.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => onChange({ ...config, reportType: option.id })}
+                className={CHIP(type === option.id)}
+                title={option.hint}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
-        ) : null}
-      </div>
+          <p className="text-xs text-muted">{meta.hint}</p>
+        </>
+      ) : null}
+
+      {showRange ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {REPORT_RANGE_PRESETS.map((preset) => (
+            <button key={preset.id} type="button" onClick={() => onRange(preset.id)} className={RANGE_CHIP(config.rangePreset === preset.id)}>
+              {preset.label}
+            </button>
+          ))}
+          {config.rangePreset === 'custom' ? (
+            <div className="flex flex-wrap items-center gap-2 pl-1">
+              <Field label="">
+                <input type="date" className={`${inputClass} py-1.5`} value={customFrom} max={customTo} onChange={(event) => onCustomFrom(event.target.value)} />
+              </Field>
+              <span className="text-muted">to</span>
+              <Field label="">
+                <input type="date" className={`${inputClass} py-1.5`} value={customTo} min={customFrom} onChange={(event) => onCustomTo(event.target.value)} />
+              </Field>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {views ? (
         <div className="flex flex-wrap items-center gap-1.5">

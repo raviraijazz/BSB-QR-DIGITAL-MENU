@@ -14,6 +14,7 @@ const topLinks = [
 ]
 
 const bottomLinks = [
+  { to: '/dashboard/reports', label: 'Reports & Analytics', icon: 'reports' },
   { to: '/dashboard/settings', label: 'Settings', icon: 'settings' },
   { to: '/dashboard/qr', label: 'QR Studio', icon: 'qr' },
   { to: '/dashboard/support', label: 'Support', icon: 'support' },

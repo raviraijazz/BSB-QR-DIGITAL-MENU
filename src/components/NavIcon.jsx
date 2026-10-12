@@ -78,6 +78,14 @@ export default function NavIcon({ name, className = 'h-4 w-4' }) {
         <path d="M12 8v8M9.6 10.2c.7-1.2 4.8-1.1 4.8.8 0 2.2-4.8 1.4-4.8 3.4 0 1.8 3.8 2 5 .7" />
       </>
     ),
+    reports: (
+      <>
+        <path d="M4 19h16" />
+        <path d="M7 16V10" />
+        <path d="M12 16V6" />
+        <path d="M17 16v-7" />
+      </>
+    ),
     waiters: (
       <>
         <circle cx="12" cy="8" r="3" />
