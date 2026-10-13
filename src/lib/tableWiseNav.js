@@ -1,4 +1,5 @@
 export const TABLE_WISE_HOME = '/dashboard/table-wise'
+export const POS_PRINTING_SETTINGS_PATH = '/dashboard/table-wise/pos-printing-settings'
 
 export const TABLE_WISE_MODULES = [
   {
@@ -59,7 +60,7 @@ export const TABLE_WISE_MODULES = [
   },
   {
     key: 'settings',
-    to: '/dashboard/table-wise/settings',
+    to: POS_PRINTING_SETTINGS_PATH,
     label: 'POS & Printing Settings',
     icon: 'settings',
     lines: ['Orders, kitchen and tables', 'KOT, bill and printers', 'Payments and waiter permissions'],

@@ -332,13 +332,15 @@ export function defaultAdvanced() {
 }
 
 export function emptySettings(restaurant = {}, user = {}) {
+  const rest = restaurant || {}
+  const account = user || {}
   return {
-    name: restaurant.name || '',
-    phone: restaurant.phone || '',
-    address: restaurant.address || '',
-    logo_url: restaurant.logo_url || '',
+    name: rest.name || '',
+    phone: rest.phone || '',
+    address: rest.address || '',
+    logo_url: rest.logo_url || '',
     restaurant_type: '',
-    owner_name: user?.user_metadata?.username || '',
+    owner_name: account?.user_metadata?.username || '',
     email: '',
     alternate_phone: '',
     gstin: '',
@@ -346,7 +348,7 @@ export function emptySettings(restaurant = {}, user = {}) {
     city: '',
     state: '',
     pin: '',
-    timezone: restaurant.timezone || restaurant.time_zone || restaurant.tz || 'Asia/Kolkata',
+    timezone: rest.timezone || rest.time_zone || rest.tz || 'Asia/Kolkata',
     currency: 'INR',
     website: '',
     facebook: '',
@@ -496,6 +498,7 @@ export function hydrateSettings(restaurant, payload, user) {
 }
 
 export function cloneSettings(value) {
+  if (!value || typeof value !== 'object') return emptySettings()
   return JSON.parse(JSON.stringify(value))
 }
 

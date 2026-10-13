@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Component, useEffect, useMemo, useState } from 'react'
 import { Link, useBlocker, useLocation, useNavigate, useOutletContext } from 'react-router-dom'
 import Alert from '../../components/Alert'
 import Button from '../../components/Button'
@@ -30,6 +30,7 @@ import {
 import { useAuth } from '../../hooks/useAuth'
 import { authEmailFromUsername, friendlyAuthError, validateOwnerPasswordReset } from '../../lib/auth'
 import { menuUrl } from '../../lib/menuUrl'
+import { POS_PRINTING_SETTINGS_PATH } from '../../lib/tableWiseNav'
 import {
   ALL_SECTIONS,
   MORE_SECTIONS,
@@ -225,8 +226,31 @@ function PasswordModal({ open, onClose, username, onSuccess }) {
 
 const SHOW_PREVIEW = new Set(['profile', 'branding', 'tax', 'payments', 'kot', 'bill'])
 
-const POS_SECTION_IDS = ['orders', 'floor', 'kitchen', 'kot', 'bill', 'printers', 'payments', 'waiters', 'permissions']
+const POS_SECTION_IDS = ['orders', 'floor', 'kitchen', 'waiters', 'permissions', 'kot', 'bill', 'printers', 'payments', 'tax', 'discounts']
 const POS_SECTIONS = POS_SECTION_IDS.map((id) => ALL_SECTIONS.find((item) => item.id === id)).filter(Boolean)
+
+class SettingsCrashGuard extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { error: null }
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="space-y-3">
+          <Alert>{this.state.error?.message || 'Unable to render these settings. Please try again.'}</Alert>
+          <Button variant="secondary" onClick={() => this.setState({ error: null })}>Retry</Button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 function sectionBody(section, props) {
   if (section === 'profile') return <ProfileFields {...props} />
@@ -247,15 +271,15 @@ function sectionBody(section, props) {
   if (section === 'security') return <SecurityFields {...props} />
   if (section === 'advanced') return <AdvancedFields {...props} />
   if (section === 'readiness') return <SystemReadiness restaurant={props.restaurant} user={props.user} />
-  return null
+  return <p className="text-sm text-muted">This settings section is not available.</p>
 }
 
-export default function Settings() {
+function SettingsPage() {
   const { user, restaurant, loading, setRestaurant } = useOutletContext()
   const { signOut } = useAuth()
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const fromTableWise = pathname.startsWith('/dashboard/table-wise')
+  const fromTableWise = pathname === POS_PRINTING_SETTINGS_PATH || pathname.startsWith(`${POS_PRINTING_SETTINGS_PATH}/`)
   const navSections = fromTableWise ? POS_SECTIONS : PRIMARY_SECTIONS
   const [slugInput, setSlugInput] = useState(restaurant?.slug || '')
   const [error, setError] = useState('')
@@ -264,7 +288,9 @@ export default function Settings() {
   const [busy, setBusy] = useState(false)
   const [saving, setSaving] = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
-  const [section, setSection] = useState(() => (pathname.startsWith('/dashboard/table-wise') ? 'orders' : 'profile'))
+  const [section, setSection] = useState(() => (
+    pathname === POS_PRINTING_SETTINGS_PATH || pathname.startsWith(`${POS_PRINTING_SETTINGS_PATH}/`) ? 'orders' : 'profile'
+  ))
   const [moreOpen, setMoreOpen] = useState(false)
   const [previewTab, setPreviewTab] = useState('bill')
   const [form, setForm] = useState(() => emptySettings(restaurant, user))
@@ -313,17 +339,25 @@ export default function Settings() {
 
   useEffect(() => {
     if (!restaurant?.id) {
-      setForm(emptySettings(restaurant, user))
-      setSaved(emptySettings(restaurant, user))
+      setForm(emptySettings(null, user))
+      setSaved(emptySettings(null, user))
+      setError('')
+      setLoadBusy(false)
       return undefined
     }
     let active = true
     setLoadBusy(true)
     setError('')
+    setForm(emptySettings(restaurant, user))
+    setSaved(emptySettings(restaurant, user))
     loadRestaurantSettings(restaurant, user)
       .then((result) => {
         if (!active) return
-        if (result.error) setError(result.error.message)
+        if (result.error) {
+          setError(result.error.message)
+          setLoadBusy(false)
+          return
+        }
         const next = result.data || emptySettings(restaurant, user)
         setForm(cloneSettings(next))
         setSaved(cloneSettings(next))
@@ -334,8 +368,6 @@ export default function Settings() {
       .catch(() => {
         if (!active) return
         setError('Unable to load restaurant settings. Please try again.')
-        setForm(emptySettings(restaurant, user))
-        setSaved(emptySettings(restaurant, user))
         setLoadBusy(false)
       })
     return () => {
@@ -425,8 +457,10 @@ export default function Settings() {
   if (!restaurant) {
     return (
       <EmptyState
-        title="Create your restaurant first"
-        body="Global restaurant settings are scoped to the restaurant you select."
+        title="Select a restaurant"
+        body={fromTableWise
+          ? 'POS & Printing Settings are scoped to the restaurant you select.'
+          : 'Restaurant Settings are scoped to the restaurant you select.'}
         actionTo="/dashboard/restaurant"
         actionLabel="Restaurant setup"
       />
@@ -454,7 +488,7 @@ export default function Settings() {
             {fromTableWise ? (
               <>
                 <span className="px-1.5">›</span>
-                <Link to="/dashboard/table-wise" className="hover:text-ink">Table-wise order</Link>
+                <Link to="/dashboard/table-wise" className="hover:text-ink">TABLE-WISE ORDER</Link>
               </>
             ) : null}
             <span className="px-1.5">›</span>
@@ -538,7 +572,11 @@ export default function Settings() {
               </p>
             </div>
           </div>
-          {loadBusy ? <Spinner /> : sectionBody(section, fieldProps)}
+          {loadBusy ? <Spinner /> : (
+            <SettingsCrashGuard>
+              {sectionBody(section, fieldProps)}
+            </SettingsCrashGuard>
+          )}
         </section>
 
         {SHOW_PREVIEW.has(section) ? (
@@ -629,5 +667,13 @@ export default function Settings() {
         </p>
       ) : null}
     </div>
+  )
+}
+
+export default function Settings() {
+  return (
+    <SettingsCrashGuard>
+      <SettingsPage />
+    </SettingsCrashGuard>
   )
 }
