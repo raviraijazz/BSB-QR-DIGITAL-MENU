@@ -57,6 +57,14 @@ export const TABLE_WISE_MODULES = [
     lines: ['Search past orders, KOTs and sessions', 'Review stored bills and payments', 'Export CSV and Excel'],
     ready: true,
   },
+  {
+    key: 'settings',
+    to: '/dashboard/table-wise/settings',
+    label: 'Settings',
+    icon: 'settings',
+    lines: ['Printers, KOT and bill', 'Payments, tax and discounts', 'Restaurant operational settings'],
+    ready: true,
+  },
 ]
 
 export function isTableWisePath(pathname) {

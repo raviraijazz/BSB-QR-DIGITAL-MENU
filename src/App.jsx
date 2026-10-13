@@ -67,6 +67,7 @@ export default function App() {
                 <Route path="table-wise/collections" element={<Collections />} />
                 <Route path="table-wise/waiters" element={<Waiters />} />
                 <Route path="table-wise/history" element={<OrderHistory />} />
+                <Route path="table-wise/settings" element={<Settings />} />
                 <Route path="reports" element={<Reports />} />
                 <Route path="qr" element={<Qr />} />
                 <Route path="support" element={<Support />} />

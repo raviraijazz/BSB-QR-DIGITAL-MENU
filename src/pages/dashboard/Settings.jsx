@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useBlocker, useNavigate, useOutletContext } from 'react-router-dom'
+import { Link, useBlocker, useLocation, useNavigate, useOutletContext } from 'react-router-dom'
 import Alert from '../../components/Alert'
 import Button from '../../components/Button'
 import Card from '../../components/Card'
@@ -251,6 +251,8 @@ export default function Settings() {
   const { user, restaurant, loading, setRestaurant } = useOutletContext()
   const { signOut } = useAuth()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const fromTableWise = pathname.startsWith('/dashboard/table-wise')
   const [slugInput, setSlugInput] = useState(restaurant?.slug || '')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -264,6 +266,7 @@ export default function Settings() {
   const [form, setForm] = useState(() => emptySettings(restaurant, user))
   const [saved, setSaved] = useState(() => emptySettings(restaurant, user))
   const [loadBusy, setLoadBusy] = useState(false)
+  const [loadKey, setLoadKey] = useState(0)
   const [fieldErrors, setFieldErrors] = useState({})
   const [navOpen, setNavOpen] = useState(false)
 
@@ -307,20 +310,29 @@ export default function Settings() {
     }
     let active = true
     setLoadBusy(true)
-    loadRestaurantSettings(restaurant, user).then((result) => {
-      if (!active) return
-      if (result.error) setError(result.error.message)
-      const next = result.data || emptySettings(restaurant, user)
-      setForm(cloneSettings(next))
-      setSaved(cloneSettings(next))
-      setFieldErrors({})
-      setNotice('')
-      setLoadBusy(false)
-    })
+    setError('')
+    loadRestaurantSettings(restaurant, user)
+      .then((result) => {
+        if (!active) return
+        if (result.error) setError(result.error.message)
+        const next = result.data || emptySettings(restaurant, user)
+        setForm(cloneSettings(next))
+        setSaved(cloneSettings(next))
+        setFieldErrors({})
+        setNotice('')
+        setLoadBusy(false)
+      })
+      .catch(() => {
+        if (!active) return
+        setError('Unable to load restaurant settings. Please try again.')
+        setForm(emptySettings(restaurant, user))
+        setSaved(emptySettings(restaurant, user))
+        setLoadBusy(false)
+      })
     return () => {
       active = false
     }
-  }, [restaurant?.id])
+  }, [restaurant?.id, loadKey])
 
   function set(key, value) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -430,6 +442,12 @@ export default function Settings() {
         <div className="min-w-0">
           <p className="text-[12px] text-muted">
             <Link to="/dashboard" className="hover:text-ink">Dashboard</Link>
+            {fromTableWise ? (
+              <>
+                <span className="px-1.5">›</span>
+                <Link to="/dashboard/table-wise" className="hover:text-ink">Table-wise order</Link>
+              </>
+            ) : null}
             <span className="px-1.5">›</span>
             <span className="text-ink">Settings</span>
           </p>
@@ -451,7 +469,14 @@ export default function Settings() {
         </div>
       </div>
 
-      <Alert>{error}</Alert>
+      {error ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <Alert>{error}</Alert>
+          </div>
+          <Button variant="secondary" disabled={loadBusy} onClick={() => setLoadKey((n) => n + 1)}>Retry</Button>
+        </div>
+      ) : null}
       <Alert type="success">{notice}</Alert>
       {dirty ? <Alert type="info">You have unsaved changes for {restaurant.name}.</Alert> : null}
 
