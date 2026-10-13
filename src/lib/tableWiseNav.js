@@ -60,9 +60,9 @@ export const TABLE_WISE_MODULES = [
   {
     key: 'settings',
     to: '/dashboard/table-wise/settings',
-    label: 'Settings',
+    label: 'POS & Printing Settings',
     icon: 'settings',
-    lines: ['Printers, KOT and bill', 'Payments, tax and discounts', 'Restaurant operational settings'],
+    lines: ['Orders, kitchen and tables', 'KOT, bill and printers', 'Payments and waiter permissions'],
     ready: true,
   },
 ]

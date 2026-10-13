@@ -15,7 +15,7 @@ const topLinks = [
 
 const bottomLinks = [
   { to: '/dashboard/reports', label: 'Reports & Analytics', icon: 'reports' },
-  { to: '/dashboard/settings', label: 'Settings', icon: 'settings' },
+  { to: '/dashboard/settings', label: 'Restaurant Settings', icon: 'settings', end: true },
   { to: '/dashboard/qr', label: 'QR Studio', icon: 'qr' },
   { to: '/dashboard/support', label: 'Support', icon: 'support' },
 ]
@@ -101,7 +101,7 @@ export default function DashboardLayout() {
           {tableWiseOpen ? (
             <div className="ml-3 mt-1 space-y-0.5 border-l border-line pl-2">
               {TABLE_WISE_MODULES.map((link) => (
-                <NavLink key={link.to} to={link.to} className={({ isActive }) => navClass(isActive)}>
+                <NavLink key={link.to} to={link.to} end className={({ isActive }) => navClass(isActive)}>
                   <NavIcon name={link.icon} className="h-4 w-4" />
                   {link.label}
                 </NavLink>
@@ -111,7 +111,7 @@ export default function DashboardLayout() {
         </div>
 
         {bottomLinks.map((link) => (
-          <NavLink key={link.to} to={link.to} className={({ isActive }) => navClass(isActive)}>
+          <NavLink key={link.to} to={link.to} end={link.end} className={({ isActive }) => navClass(isActive)}>
             <NavIcon name={link.icon} className="h-4 w-4" />
             {link.label}
           </NavLink>

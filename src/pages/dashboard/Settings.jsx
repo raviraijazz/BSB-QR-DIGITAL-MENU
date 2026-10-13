@@ -225,6 +225,9 @@ function PasswordModal({ open, onClose, username, onSuccess }) {
 
 const SHOW_PREVIEW = new Set(['profile', 'branding', 'tax', 'payments', 'kot', 'bill'])
 
+const POS_SECTION_IDS = ['orders', 'floor', 'kitchen', 'kot', 'bill', 'printers', 'payments', 'waiters', 'permissions']
+const POS_SECTIONS = POS_SECTION_IDS.map((id) => ALL_SECTIONS.find((item) => item.id === id)).filter(Boolean)
+
 function sectionBody(section, props) {
   if (section === 'profile') return <ProfileFields {...props} />
   if (section === 'branding') return <BrandingFields {...props} />
@@ -253,6 +256,7 @@ export default function Settings() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const fromTableWise = pathname.startsWith('/dashboard/table-wise')
+  const navSections = fromTableWise ? POS_SECTIONS : PRIMARY_SECTIONS
   const [slugInput, setSlugInput] = useState(restaurant?.slug || '')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -260,7 +264,7 @@ export default function Settings() {
   const [busy, setBusy] = useState(false)
   const [saving, setSaving] = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
-  const [section, setSection] = useState('profile')
+  const [section, setSection] = useState(() => (pathname.startsWith('/dashboard/table-wise') ? 'orders' : 'profile'))
   const [moreOpen, setMoreOpen] = useState(false)
   const [previewTab, setPreviewTab] = useState('bill')
   const [form, setForm] = useState(() => emptySettings(restaurant, user))
@@ -275,7 +279,12 @@ export default function Settings() {
   const url = restaurant?.slug ? menuUrl(restaurant.slug) : ''
   const dirty = useMemo(() => !settingsEqual(form, saved), [form, saved])
   const blocker = useBlocker(dirty)
-  const currentSection = ALL_SECTIONS.find((item) => item.id === section) || PRIMARY_SECTIONS[0]
+  const currentSection = ALL_SECTIONS.find((item) => item.id === section) || navSections[0] || PRIMARY_SECTIONS[0]
+
+  useEffect(() => {
+    setSection(fromTableWise ? 'orders' : 'profile')
+    setMoreOpen(false)
+  }, [fromTableWise])
 
   useEffect(() => {
     setSlugInput(restaurant?.slug || '')
@@ -449,11 +458,15 @@ export default function Settings() {
               </>
             ) : null}
             <span className="px-1.5">›</span>
-            <span className="text-ink">Settings</span>
+            <span className="text-ink">{fromTableWise ? 'POS & Printing Settings' : 'Restaurant Settings'}</span>
           </p>
-          <h1 className="mt-1 font-display text-3xl leading-tight">Global Restaurant Settings</h1>
+          <h1 className="mt-1 font-display text-3xl leading-tight">
+            {fromTableWise ? 'POS & Printing Settings' : 'Global Restaurant Settings'}
+          </h1>
           <p className="mt-1 max-w-3xl text-sm text-muted">
-            Configure your restaurant settings, branding, tax, payment, KOT, bill and more. Changes here will be applied across your restaurant.
+            {fromTableWise
+              ? 'Configure orders, kitchen, KOT, bills, printers, payments and waiter permissions for this restaurant.'
+              : 'Configure your restaurant settings, branding, tax, payment, KOT, bill and more. Changes here will be applied across your restaurant.'}
           </p>
           <p className="mt-1 text-sm font-medium">{restaurant.name}</p>
         </div>
@@ -482,8 +495,10 @@ export default function Settings() {
 
       <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)_minmax(18rem,22rem)] lg:grid-cols-[200px_minmax(0,1fr)]">
         <nav className={`${navOpen ? 'block' : 'hidden'} rounded-[18px] border border-line bg-card p-3 shadow-sm lg:block`}>
-          <p className="px-2 pb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Settings</p>
-          {PRIMARY_SECTIONS.map((item) => (
+          <p className="px-2 pb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
+            {fromTableWise ? 'POS & Printing' : 'Settings'}
+          </p>
+          {navSections.map((item) => (
             <button
               key={item.id}
               type="button"
@@ -493,19 +508,23 @@ export default function Settings() {
               {item.label}
             </button>
           ))}
-          <button type="button" className="mt-2 w-full rounded-xl px-3 py-2 text-left text-sm text-muted hover:bg-paper" onClick={() => setMoreOpen((open) => !open)}>
-            More
-          </button>
-          {moreOpen ? MORE_SECTIONS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => { setSection(item.id); setNavOpen(false) }}
-              className={`mb-0.5 flex w-full rounded-xl px-3 py-2 text-left text-sm ${section === item.id ? 'bg-forest text-[#f5ead8]' : 'text-ink hover:bg-paper'}`}
-            >
-              {item.label}
-            </button>
-          )) : null}
+          {!fromTableWise ? (
+            <>
+              <button type="button" className="mt-2 w-full rounded-xl px-3 py-2 text-left text-sm text-muted hover:bg-paper" onClick={() => setMoreOpen((open) => !open)}>
+                More
+              </button>
+              {moreOpen ? MORE_SECTIONS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => { setSection(item.id); setNavOpen(false) }}
+                  className={`mb-0.5 flex w-full rounded-xl px-3 py-2 text-left text-sm ${section === item.id ? 'bg-forest text-[#f5ead8]' : 'text-ink hover:bg-paper'}`}
+                >
+                  {item.label}
+                </button>
+              )) : null}
+            </>
+          ) : null}
         </nav>
 
         <section className="min-w-0 rounded-[18px] border border-line bg-card p-4 shadow-sm sm:p-5">
@@ -535,6 +554,8 @@ export default function Settings() {
         </div>
       ) : null}
 
+      {fromTableWise ? null : (
+      <>
       <Card title="Public Menu" compact>
         <p className="break-all text-sm text-ink">{url}</p>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -572,6 +593,8 @@ export default function Settings() {
           <Button variant="secondary" onClick={onSignOut}>Sign Out</Button>
         </div>
       </Card>
+      </>
+      )}
 
       {blocker.state === 'blocked' ? (
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-ink/40 p-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="unsaved-settings-title">
