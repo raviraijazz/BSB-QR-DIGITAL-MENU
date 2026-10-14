@@ -1,5 +1,5 @@
-import { Component, useEffect, useMemo, useState } from 'react'
-import { Link, useBlocker, useLocation, useNavigate, useOutletContext } from 'react-router-dom'
+import { Component, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useLocation, useNavigate, useOutletContext } from 'react-router-dom'
 import Alert from '../../components/Alert'
 import Button from '../../components/Button'
 import Card from '../../components/Card'
@@ -226,6 +226,44 @@ function PasswordModal({ open, onClose, username, onSuccess }) {
 
 const SHOW_PREVIEW = new Set(['profile', 'branding', 'tax', 'payments', 'kot', 'bill'])
 
+function isInternalHref(href) {
+  if (!href || href.startsWith('#')) return false
+  if (/^(https?:|mailto:|tel:)/i.test(href)) return false
+  return true
+}
+
+function useUnsavedBlocker(dirty) {
+  const navigate = useNavigate()
+  const [pending, setPending] = useState(null)
+  const dirtyRef = useRef(dirty)
+  dirtyRef.current = dirty
+
+  useEffect(() => {
+    function onClick(event) {
+      if (!dirtyRef.current || event.defaultPrevented || event.button !== 0) return
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+      const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null
+      if (!anchor || anchor.target === '_blank') return
+      const href = anchor.getAttribute('href')
+      if (!isInternalHref(href)) return
+      event.preventDefault()
+      setPending(href)
+    }
+    document.addEventListener('click', onClick, true)
+    return () => document.removeEventListener('click', onClick, true)
+  }, [])
+
+  return {
+    state: pending ? 'blocked' : 'unblocked',
+    proceed: () => {
+      const to = pending
+      setPending(null)
+      if (to) navigate(to)
+    },
+    reset: () => setPending(null),
+  }
+}
+
 const POS_SECTION_IDS = ['orders', 'floor', 'kitchen', 'waiters', 'permissions', 'kot', 'bill', 'printers', 'payments', 'tax', 'discounts']
 const POS_SECTIONS = POS_SECTION_IDS.map((id) => ALL_SECTIONS.find((item) => item.id === id)).filter(Boolean)
 
@@ -304,7 +342,7 @@ function SettingsPage() {
   const contact = user?.user_metadata?.contact_number || ''
   const url = restaurant?.slug ? menuUrl(restaurant.slug) : ''
   const dirty = useMemo(() => !settingsEqual(form, saved), [form, saved])
-  const blocker = useBlocker(dirty)
+  const blocker = useUnsavedBlocker(dirty)
   const currentSection = ALL_SECTIONS.find((item) => item.id === section) || navSections[0] || PRIMARY_SECTIONS[0]
 
   useEffect(() => {
