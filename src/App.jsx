@@ -1,11 +1,14 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import GuestRoute from './components/GuestRoute'
+import PlatformAdminRoute from './components/PlatformAdminRoute'
 import ProtectedRoute from './components/ProtectedRoute'
 import Spinner from './components/Spinner'
 import { AuthProvider } from './hooks/useAuth'
+import { PlatformAdminProvider } from './hooks/usePlatformAdmin'
 import { WaiterProvider } from './hooks/useWaiter'
 import DashboardLayout from './layouts/DashboardLayout'
+import PlatformAdminLayout from './layouts/PlatformAdminLayout'
 import PublicLayout from './layouts/PublicLayout'
 import WaiterLayout from './layouts/WaiterLayout'
 
@@ -34,14 +37,29 @@ const RunningBills = lazy(() => import('./pages/dashboard/tableWise/RunningBills
 const Collections = lazy(() => import('./pages/dashboard/tableWise/Collections'))
 const OrderHistory = lazy(() => import('./pages/dashboard/tableWise/OrderHistory'))
 const Reports = lazy(() => import('./pages/dashboard/Reports'))
+const PlatformAdminLogin = lazy(() => import('./pages/platformAdmin/PlatformAdminLogin'))
+const PlatformAdminDashboard = lazy(() => import('./pages/platformAdmin/PlatformAdminDashboard'))
+const PlatformAdminRestaurants = lazy(() => import('./pages/platformAdmin/PlatformAdminRestaurants'))
+const PlatformAdminRestaurantDetail = lazy(() => import('./pages/platformAdmin/PlatformAdminRestaurantDetail'))
+const PlatformAdminPlanned = lazy(() => import('./pages/platformAdmin/PlatformAdminPlanned'))
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Suspense fallback={<Spinner />}>
-          <Routes>
-            <Route path="/menu/:slug" element={<PublicMenu />} />
+        <PlatformAdminProvider>
+          <Suspense fallback={<Spinner />}>
+            <Routes>
+              <Route path="/platform-admin/login" element={<PlatformAdminLogin />} />
+              <Route element={<PlatformAdminRoute />}>
+                <Route path="/platform-admin" element={<PlatformAdminLayout />}>
+                  <Route index element={<PlatformAdminDashboard />} />
+                  <Route path="restaurants" element={<PlatformAdminRestaurants />} />
+                  <Route path="restaurants/:restaurantId" element={<PlatformAdminRestaurantDetail />} />
+                  <Route path="*" element={<PlatformAdminPlanned />} />
+                </Route>
+              </Route>
+              <Route path="/menu/:slug" element={<PublicMenu />} />
             <Route element={<PublicLayout />}>
               <Route path="/" element={<Home />} />
               <Route element={<GuestRoute allow="owner" />}>
@@ -91,8 +109,9 @@ export default function App() {
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
+            </Routes>
+          </Suspense>
+        </PlatformAdminProvider>
       </BrowserRouter>
     </AuthProvider>
   )
