@@ -2,10 +2,21 @@
 -- Safe to run on existing projects. Adds only new tables/columns/functions.
 -- Does not modify or delete restaurants, orders, bills or payments.
 --
--- BOOTSTRAP (run once, after creating the founder auth user):
---   insert into public.platform_admins (user_id, email, notes)
---   select id, email, 'Founder' from auth.users
---   where lower(email) = lower('founder@your-domain.com')
+-- The founder signs in with a username + password only. Supabase Auth still
+-- needs an email identifier, so the founder's username maps to a synthetic
+-- internal address: <username>@platform.bsbdigitalmenu.local
+--
+-- BOOTSTRAP (preferred): deploy the platform-admin-setup function and call it
+-- with the setup secret to create the founder auth user + allowlist row. See
+-- the function header for the exact curl command. It uses the Supabase Admin
+-- Auth API with email_confirm: true, so no email verification is required and
+-- no password is ever stored in application tables.
+--
+-- BOOTSTRAP (manual fallback): create the user in Supabase Dashboard >
+-- Authentication > Add user with the synthetic email and auto-confirm, then:
+--   insert into public.platform_admins (user_id, username, email, notes)
+--   select id, 'founder', email, 'Founder' from auth.users
+--   where lower(email) = 'founder@platform.bsbdigitalmenu.local'
 --   on conflict (user_id) do nothing;
 -- Never hard-code credentials in source. Revoke with:
 --   delete from public.platform_admins where user_id = '<uuid>';
@@ -30,10 +41,22 @@ create index if not exists restaurants_status_idx on public.restaurants (status)
 -- ---------------------------------------------------------------------------
 create table if not exists public.platform_admins (
   user_id uuid primary key references auth.users (id) on delete cascade,
+  username text not null default '',
   email text not null default '',
   notes text not null default '',
   created_at timestamptz not null default now()
 );
+
+-- Existing installs (created before founder username support): add the column
+-- without recreating the table or dropping any admin records.
+alter table public.platform_admins
+  add column if not exists username text not null default '';
+
+-- One founder username may map to at most one admin. Case-insensitive, and
+-- blank usernames are not enforced so legacy rows can be migrated gradually.
+create unique index if not exists platform_admins_username_key
+  on public.platform_admins (lower(username))
+  where username <> '';
 
 alter table public.platform_admins enable row level security;
 revoke all on public.platform_admins from anon, authenticated;

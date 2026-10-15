@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
 
   const { data: allow } = await admin
     .from('platform_admins')
-    .select('user_id, email')
+    .select('user_id, username, email')
     .eq('user_id', actor.id)
     .maybeSingle()
 
@@ -76,8 +76,8 @@ Deno.serve(async (req) => {
       isAdmin: Boolean(allow),
       user: {
         id: actor.id,
-        email: actor.email || allow?.email || '',
-        username: profile?.username || '',
+        // Never expose the synthetic internal auth email to the client.
+        username: allow?.username || profile?.username || '',
       },
     })
   }
@@ -95,6 +95,33 @@ Deno.serve(async (req) => {
   }
 
   try {
+    if (action === 'change_password') {
+      const currentPassword = String(payload.current_password || '')
+      const newPassword = String(payload.new_password || '')
+      if (!currentPassword || !newPassword) {
+        return json({ error: 'Current and new password are required.' }, 400)
+      }
+      if (newPassword.length < 8) {
+        return json({ error: 'New password must be at least 8 characters.' }, 400)
+      }
+      if (newPassword === currentPassword) {
+        return json({ error: 'New password must be different from the current password.' }, 400)
+      }
+      if (!actor.email) {
+        return json({ error: 'Password change is unavailable for this account.' }, 400)
+      }
+      // Verify the current password before rotating. No email/OTP is involved.
+      const { error: verifyError } = await userClient.auth.signInWithPassword({
+        email: actor.email,
+        password: currentPassword,
+      })
+      if (verifyError) return json({ error: 'Current password is incorrect.' }, 400)
+      const { error: updateError } = await admin.auth.admin.updateUserById(actor.id, { password: newPassword })
+      if (updateError) return json({ error: 'Could not update password.' }, 400)
+      await audit('change_password', null, {})
+      return json({ ok: true })
+    }
+
     if (action === 'overview') {
       const to = payload.to ? new Date(String(payload.to)) : new Date()
       const from = payload.from ? new Date(String(payload.from)) : new Date(to.getTime() - 30 * 86400000)

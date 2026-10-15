@@ -2,6 +2,7 @@ const USERNAME_RE = /^[a-zA-Z0-9_]{3,24}$/
 const PHONE_RE = /^\+?[0-9]{10,15}$/
 const AUTH_EMAIL_DOMAIN = 'auth.bsbdigitalmenu.local'
 const WAITER_AUTH_EMAIL_DOMAIN = 'waiter.bsbdigitalmenu.local'
+const PLATFORM_AUTH_EMAIL_DOMAIN = 'platform.bsbdigitalmenu.local'
 
 export function normalizeUsername(value) {
   return String(value || '').trim().toLowerCase()
@@ -9,6 +10,31 @@ export function normalizeUsername(value) {
 
 export function authEmailFromUsername(username) {
   return `${normalizeUsername(username)}@${AUTH_EMAIL_DOMAIN}`
+}
+
+// Founder Console: username maps to a synthetic internal auth email. This value
+// is an internal identifier only and must never be shown to the founder.
+export function platformAuthEmailFromUsername(username) {
+  return `${normalizeUsername(username)}@${PLATFORM_AUTH_EMAIL_DOMAIN}`
+}
+
+export function validateFounderLogin({ username, password }) {
+  if (!String(username || '').trim()) return 'Username required'
+  if (!USERNAME_RE.test(String(username).trim())) {
+    return 'Username must be 3–24 letters, numbers or underscores'
+  }
+  if (!password) return 'Password required'
+  return ''
+}
+
+export function validateFounderPasswordChange({ currentPassword, newPassword, confirmPassword }) {
+  if (!currentPassword) return 'Current password is required'
+  if (!newPassword) return 'New password is required'
+  if (newPassword.length < 8) return 'Password must be at least 8 characters'
+  if (!confirmPassword) return 'Confirm password required'
+  if (newPassword !== confirmPassword) return 'Passwords do not match'
+  if (newPassword === currentPassword) return 'New password must be different'
+  return ''
 }
 
 export function waiterAuthEmailFromWaiterId(waiterId) {

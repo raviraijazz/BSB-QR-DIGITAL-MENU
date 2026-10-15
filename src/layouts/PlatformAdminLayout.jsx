@@ -81,7 +81,7 @@ export default function PlatformAdminLayout() {
         ))}
       </nav>
       <div className="mt-auto border-t border-slate-800 px-4 py-3">
-        <p className="truncate text-xs text-slate-400">{admin?.email || admin?.username || 'Platform admin'}</p>
+        <p className="truncate text-xs text-slate-400">{admin?.username || 'Platform admin'}</p>
         <button type="button" onClick={handleSignOut} className="mt-1 text-sm text-slate-300 hover:text-white">
           Sign out
         </button>

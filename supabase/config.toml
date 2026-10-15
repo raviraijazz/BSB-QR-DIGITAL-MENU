@@ -9,3 +9,9 @@ verify_jwt = true
 
 [functions.platform-admin]
 verify_jwt = true
+
+# Bootstrap endpoint. Not JWT-gated because the founder has no session yet;
+# it is guarded instead by the PLATFORM_ADMIN_SETUP_SECRET header and is
+# disabled entirely when that secret is unset.
+[functions.platform-admin-setup]
+verify_jwt = false

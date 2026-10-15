@@ -43,3 +43,10 @@ export function listPlatformRestaurants({ search = '', status = '', page = 1, pa
 export function getPlatformRestaurant(id) {
   return platformAdminCall('restaurant', { id })
 }
+
+export function changePlatformAdminPassword({ currentPassword, newPassword }) {
+  return platformAdminCall('change_password', {
+    current_password: currentPassword,
+    new_password: newPassword,
+  })
+}

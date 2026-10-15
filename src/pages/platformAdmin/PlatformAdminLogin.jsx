@@ -3,18 +3,21 @@ import { Link, Navigate, useNavigate } from 'react-router-dom'
 import Alert from '../../components/Alert'
 import Button from '../../components/Button'
 import Field, { inputClass } from '../../components/Field'
+import PasswordInput from '../../components/PasswordInput'
 import { useAuth } from '../../hooks/useAuth'
 import { usePlatformAdmin } from '../../hooks/usePlatformAdmin'
-import { friendlyAuthError } from '../../lib/auth'
+import { friendlyAuthError, platformAuthEmailFromUsername, validateFounderLogin } from '../../lib/auth'
 import { PLATFORM_ADMIN_HOME } from '../../lib/platformAdmin'
 import { supabase } from '../../lib/supabase'
 import { whoami } from '../../services/platformAdmin'
+
+const NOT_AUTHORIZED = 'You are not authorized to access the Platform Admin Panel.'
 
 export default function PlatformAdminLogin() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { isAdmin, checked, checking, verify } = usePlatformAdmin()
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -27,18 +30,17 @@ export default function PlatformAdminLogin() {
 
   async function onSubmit(event) {
     event.preventDefault()
-    const trimmed = email.trim()
-    if (!trimmed || !trimmed.includes('@')) {
-      setError('Enter your founder email address')
-      return
-    }
-    if (!password) {
-      setError('Password required')
+    const validation = validateFounderLogin({ username, password })
+    if (validation) {
+      setError(validation)
       return
     }
     setBusy(true)
     setError('')
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email: trimmed, password })
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: platformAuthEmailFromUsername(username),
+      password,
+    })
     if (signInError) {
       setBusy(false)
       setError(friendlyAuthError(signInError))
@@ -48,7 +50,7 @@ export default function PlatformAdminLogin() {
     if (checkError || !data?.isAdmin) {
       await supabase.auth.signOut()
       setBusy(false)
-      setError('This account is not authorized for the Founder Console.')
+      setError(NOT_AUTHORIZED)
       return
     }
     setBusy(false)
@@ -66,26 +68,20 @@ export default function PlatformAdminLogin() {
             <p className="mt-1 text-sm text-slate-500">Authorized founder access only.</p>
           </div>
           <Alert>{error}</Alert>
-          <Field label="Email">
+          <Field label="Username">
             <input
               className={inputClass}
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
+              autoCapitalize="none"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
             />
           </Field>
           <Field label="Password">
-            <input
-              className={inputClass}
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <PasswordInput value={password} onChange={setPassword} />
           </Field>
           <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700" disabled={busy}>
-            {busy ? 'Signing in...' : 'Sign in'}
+            {busy ? 'Signing in...' : 'Sign In'}
           </Button>
         </form>
         <p className="mt-4 text-center text-sm text-slate-400">

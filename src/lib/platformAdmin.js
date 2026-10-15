@@ -36,6 +36,7 @@ export const PLATFORM_NAV = [
     type: 'group',
     label: 'System Management',
     items: [
+      { to: '/platform-admin/account', label: 'Account & Security', icon: 'settings' },
       { label: 'Global Settings', icon: 'settings', planned: true },
       { label: 'Integrations', icon: 'link', planned: true },
       { label: 'System Logs', icon: 'history', planned: true },

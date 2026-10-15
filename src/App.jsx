@@ -41,6 +41,7 @@ const PlatformAdminLogin = lazy(() => import('./pages/platformAdmin/PlatformAdmi
 const PlatformAdminDashboard = lazy(() => import('./pages/platformAdmin/PlatformAdminDashboard'))
 const PlatformAdminRestaurants = lazy(() => import('./pages/platformAdmin/PlatformAdminRestaurants'))
 const PlatformAdminRestaurantDetail = lazy(() => import('./pages/platformAdmin/PlatformAdminRestaurantDetail'))
+const PlatformAdminAccount = lazy(() => import('./pages/platformAdmin/PlatformAdminAccount'))
 const PlatformAdminPlanned = lazy(() => import('./pages/platformAdmin/PlatformAdminPlanned'))
 
 export default function App() {
@@ -56,6 +57,7 @@ export default function App() {
                   <Route index element={<PlatformAdminDashboard />} />
                   <Route path="restaurants" element={<PlatformAdminRestaurants />} />
                   <Route path="restaurants/:restaurantId" element={<PlatformAdminRestaurantDetail />} />
+                  <Route path="account" element={<PlatformAdminAccount />} />
                   <Route path="*" element={<PlatformAdminPlanned />} />
                 </Route>
               </Route>
