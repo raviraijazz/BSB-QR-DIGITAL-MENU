@@ -8,6 +8,7 @@ import { AuthProvider } from './hooks/useAuth'
 import { PlatformAdminProvider } from './hooks/usePlatformAdmin'
 import { WaiterProvider } from './hooks/useWaiter'
 import DashboardLayout from './layouts/DashboardLayout'
+import FounderSupportLayout from './layouts/FounderSupportLayout'
 import PlatformAdminLayout from './layouts/PlatformAdminLayout'
 import PublicLayout from './layouts/PublicLayout'
 import WaiterLayout from './layouts/WaiterLayout'
@@ -42,7 +43,19 @@ const PlatformAdminDashboard = lazy(() => import('./pages/platformAdmin/Platform
 const PlatformAdminRestaurants = lazy(() => import('./pages/platformAdmin/PlatformAdminRestaurants'))
 const PlatformAdminRestaurantDetail = lazy(() => import('./pages/platformAdmin/PlatformAdminRestaurantDetail'))
 const PlatformAdminAccount = lazy(() => import('./pages/platformAdmin/PlatformAdminAccount'))
+const PlatformAdminImportMenu = lazy(() => import('./pages/platformAdmin/PlatformAdminImportMenu'))
+const PlatformAdminAudit = lazy(() => import('./pages/platformAdmin/PlatformAdminAudit'))
 const PlatformAdminPlanned = lazy(() => import('./pages/platformAdmin/PlatformAdminPlanned'))
+const SupportOverview = lazy(() => import('./pages/dashboard/Overview'))
+const SupportCategories = lazy(() => import('./pages/dashboard/Categories'))
+const SupportMenu = lazy(() => import('./pages/dashboard/Menu'))
+const SupportTables = lazy(() => import('./pages/dashboard/Tables'))
+const SupportLiveOrders = lazy(() => import('./pages/dashboard/tableWise/LiveOrders'))
+const SupportKitchen = lazy(() => import('./pages/dashboard/tableWise/Kitchen'))
+const SupportRunningBills = lazy(() => import('./pages/dashboard/tableWise/RunningBills'))
+const SupportCollections = lazy(() => import('./pages/dashboard/tableWise/Collections'))
+const SupportOrderHistory = lazy(() => import('./pages/dashboard/tableWise/OrderHistory'))
+const SupportReports = lazy(() => import('./pages/dashboard/Reports'))
 
 export default function App() {
   return (
@@ -57,8 +70,24 @@ export default function App() {
                   <Route index element={<PlatformAdminDashboard />} />
                   <Route path="restaurants" element={<PlatformAdminRestaurants />} />
                   <Route path="restaurants/:restaurantId" element={<PlatformAdminRestaurantDetail />} />
+                  <Route path="import-menu" element={<PlatformAdminImportMenu />} />
+                  <Route path="audit" element={<PlatformAdminAudit />} />
                   <Route path="account" element={<PlatformAdminAccount />} />
                   <Route path="*" element={<PlatformAdminPlanned />} />
+                </Route>
+                {/* Founder support session opens the real owner dashboard for
+                    exactly one restaurant, scoped server-side. */}
+                <Route path="/platform-admin/support/:restaurantId" element={<FounderSupportLayout />}>
+                  <Route index element={<SupportOverview />} />
+                  <Route path="categories" element={<SupportCategories />} />
+                  <Route path="menu" element={<SupportMenu />} />
+                  <Route path="tables" element={<SupportTables />} />
+                  <Route path="orders" element={<SupportLiveOrders />} />
+                  <Route path="kitchen" element={<SupportKitchen />} />
+                  <Route path="bills" element={<SupportRunningBills />} />
+                  <Route path="collections" element={<SupportCollections />} />
+                  <Route path="history" element={<SupportOrderHistory />} />
+                  <Route path="reports" element={<SupportReports />} />
                 </Route>
               </Route>
               <Route path="/menu/:slug" element={<PublicMenu />} />

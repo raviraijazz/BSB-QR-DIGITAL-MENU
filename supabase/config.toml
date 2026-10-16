@@ -15,3 +15,8 @@ verify_jwt = true
 # disabled entirely when that secret is unset.
 [functions.platform-admin-setup]
 verify_jwt = false
+
+# Founder username+password login. No JWT yet at sign-in time; authorization is
+# enforced by checking the resulting user against public.platform_admins.
+[functions.platform-admin-auth]
+verify_jwt = false

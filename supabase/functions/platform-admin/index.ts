@@ -26,6 +26,55 @@ function parseKeys(raw: string | undefined): Record<string, unknown> {
   }
 }
 
+function toSheetCsvUrl(url: string): string | null {
+  if (/export\?format=csv/i.test(url)) return url
+  const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+  if (!match) return null
+  const gidMatch = url.match(/[#&?]gid=([0-9]+)/)
+  const gid = gidMatch ? gidMatch[1] : '0'
+  return `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv&gid=${gid}`
+}
+
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let field = ''
+  let inQuotes = false
+  const source = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i]
+    if (inQuotes) {
+      if (char === '"') {
+        if (source[i + 1] === '"') {
+          field += '"'
+          i += 1
+        } else {
+          inQuotes = false
+        }
+      } else {
+        field += char
+      }
+    } else if (char === '"') {
+      inQuotes = true
+    } else if (char === ',') {
+      row.push(field)
+      field = ''
+    } else if (char === '\n') {
+      row.push(field)
+      rows.push(row)
+      row = []
+      field = ''
+    } else {
+      field += char
+    }
+  }
+  if (field.length || row.length) {
+    row.push(field)
+    rows.push(row)
+  }
+  return rows.filter((r) => r.some((cell) => cell.trim() !== ''))
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
@@ -183,8 +232,54 @@ Deno.serve(async (req) => {
         .eq('restaurant_id', id)
         .maybeSingle()
       const restaurant = { ...row, restaurant_type: settings?.restaurant_type || '' }
+
+      // Account directory for the Manage Access panel.
+      const { data: ownerProfile } = await admin
+        .from('profiles')
+        .select('id, username, role, is_blocked')
+        .eq('id', restaurant.owner_id)
+        .maybeSingle()
+      const { data: waiterRows } = await admin
+        .from('waiters')
+        .select('id, auth_user_id, waiter_id, full_name, is_active, is_blocked')
+        .eq('restaurant_id', id)
+        .order('full_name')
+
       await audit('view_restaurant', id, { name: row.name })
-      return json({ restaurant })
+      return json({
+        restaurant: {
+          ...restaurant,
+          owner: ownerProfile || null,
+          waiters: waiterRows || [],
+        },
+      })
+    }
+
+    if (action === 'fetch_sheet') {
+      const url = String(payload.url || '').trim()
+      if (!/^https:\/\//i.test(url)) {
+        return json({ error: 'A valid https spreadsheet URL is required.' }, 400)
+      }
+      const allowedHost = /^https:\/\/(docs\.google\.com|drive\.google\.com|docs\.googleusercontent\.com)\//i.test(url)
+      if (!allowedHost) {
+        return json({ error: 'Only Google Sheets URLs are supported for direct fetch. Upload a CSV file instead.' }, 400)
+      }
+      const exportUrl = toSheetCsvUrl(url)
+      if (!exportUrl) return json({ error: 'Could not build a CSV export URL from that link.' }, 400)
+      let text = ''
+      try {
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 15000)
+        const res = await fetch(exportUrl, { signal: controller.signal, redirect: 'follow' })
+        clearTimeout(timer)
+        if (!res.ok) return json({ error: `Sheet fetch failed (HTTP ${res.status}). Is it shared publicly?` }, 400)
+        text = await res.text()
+      } catch {
+        return json({ error: 'Could not reach the sheet. Ensure it is shared publicly or upload a CSV file.' }, 400)
+      }
+      const rows = parseCsv(text)
+      if (!rows.length) return json({ error: 'The sheet appears to be empty.' }, 400)
+      return json({ rows })
     }
 
     return json({ error: 'Unknown action.' }, 400)

@@ -6,10 +6,10 @@ import Field, { inputClass } from '../../components/Field'
 import PasswordInput from '../../components/PasswordInput'
 import { useAuth } from '../../hooks/useAuth'
 import { usePlatformAdmin } from '../../hooks/usePlatformAdmin'
-import { friendlyAuthError, platformAuthEmailFromUsername, validateFounderLogin } from '../../lib/auth'
+import { validateFounderLogin } from '../../lib/auth'
 import { PLATFORM_ADMIN_HOME } from '../../lib/platformAdmin'
 import { supabase } from '../../lib/supabase'
-import { whoami } from '../../services/platformAdmin'
+import { founderLogin } from '../../services/platformAdmin'
 
 const NOT_AUTHORIZED = 'You are not authorized to access the Platform Admin Panel.'
 
@@ -37,23 +37,23 @@ export default function PlatformAdminLogin() {
     }
     setBusy(true)
     setError('')
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: platformAuthEmailFromUsername(username),
-      password,
-    })
-    if (signInError) {
+    // The username is mapped to the internal auth identity server-side; the
+    // browser never sees or sends the synthetic email.
+    const { data, error: loginError } = await founderLogin(username, password)
+    if (loginError) {
       setBusy(false)
-      setError(friendlyAuthError(signInError))
+      setError(loginError.message || 'Invalid username or password')
       return
     }
-    const { data, error: checkError } = await whoami()
-    if (checkError || !data?.isAdmin) {
-      await supabase.auth.signOut()
+    const { error: sessionError } = await supabase.auth.setSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+    })
+    if (sessionError) {
       setBusy(false)
       setError(NOT_AUTHORIZED)
       return
     }
-    setBusy(false)
     navigate(PLATFORM_ADMIN_HOME, { replace: true })
   }
 
