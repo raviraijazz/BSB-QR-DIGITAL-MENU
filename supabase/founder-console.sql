@@ -202,8 +202,8 @@ declare
   t text;
 begin
   foreach t in array array[
-    'categories', 'menu_items', 'restaurant_tables', 'orders', 'order_items',
-    'kots', 'kot_items', 'bills', 'payments', 'waiters',
+    'categories', 'menu_items', 'restaurant_tables', 'orders',
+    'kots', 'bills', 'payments', 'waiters',
     'waiter_table_assignments', 'table_sessions'
   ]
   loop
@@ -217,6 +217,42 @@ begin
   end loop;
 end;
 $$;
+
+-- order_items has no restaurant_id; resolve through orders.
+drop policy if exists "owners manage order_items" on public.order_items;
+create policy "owners manage order_items"
+  on public.order_items for all
+  to authenticated
+  using (
+    exists (
+      select 1 from public.orders o
+      where o.id = order_id and public.is_restaurant_owner(o.restaurant_id)
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.orders o
+      where o.id = order_id and public.is_restaurant_owner(o.restaurant_id)
+    )
+  );
+
+-- kot_items has no restaurant_id; resolve through kots.
+drop policy if exists "owners manage kot_items" on public.kot_items;
+create policy "owners manage kot_items"
+  on public.kot_items for all
+  to authenticated
+  using (
+    exists (
+      select 1 from public.kots k
+      where k.id = kot_id and public.is_restaurant_owner(k.restaurant_id)
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.kots k
+      where k.id = kot_id and public.is_restaurant_owner(k.restaurant_id)
+    )
+  );
 
 -- session_tables has no restaurant_id column; resolve through table_sessions.
 drop policy if exists "owners manage session_tables" on public.session_tables;
