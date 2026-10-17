@@ -18,6 +18,8 @@
 --   select id, 'founder', email, 'Founder' from auth.users
 --   where lower(email) = 'founder@platform.bsbdigitalmenu.local'
 --   on conflict (user_id) do nothing;
+-- platform_admins.must_change_password defaults to true (see founder-console.sql),
+-- so a manually seeded founder must still rotate the password on first login.
 -- Never hard-code credentials in source. Revoke with:
 --   delete from public.platform_admins where user_id = '<uuid>';
 

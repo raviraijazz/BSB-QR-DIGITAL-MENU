@@ -1,3 +1,5 @@
+import { validateNewFounderPassword } from '../../supabase/functions/_shared/founder-gate.js'
+
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,24}$/
 const PHONE_RE = /^\+?[0-9]{10,15}$/
 const AUTH_EMAIL_DOMAIN = 'auth.bsbdigitalmenu.local'
@@ -29,12 +31,7 @@ export function validateFounderLogin({ username, password }) {
 
 export function validateFounderPasswordChange({ currentPassword, newPassword, confirmPassword }) {
   if (!currentPassword) return 'Current password is required'
-  if (!newPassword) return 'New password is required'
-  if (newPassword.length < 8) return 'Password must be at least 8 characters'
-  if (!confirmPassword) return 'Confirm password required'
-  if (newPassword !== confirmPassword) return 'Passwords do not match'
-  if (newPassword === currentPassword) return 'New password must be different'
-  return ''
+  return validateNewFounderPassword(newPassword, confirmPassword, currentPassword)
 }
 
 export function waiterAuthEmailFromWaiterId(waiterId) {

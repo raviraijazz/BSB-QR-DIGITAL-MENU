@@ -36,13 +36,27 @@ function parseKeys(raw: string | undefined): Record<string, unknown> {
   }
 }
 
+// New projects expose SUPABASE_PUBLISHABLE_KEYS / SUPABASE_SECRET_KEYS as JSON;
+// older projects expose SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY.
+function resolveAnonKey() {
+  const keys = parseKeys(Deno.env.get('SUPABASE_PUBLISHABLE_KEYS'))
+  if (typeof keys.default === 'string' && keys.default) return keys.default
+  return Deno.env.get('SUPABASE_ANON_KEY') || ''
+}
+
+function resolveServiceKey() {
+  const keys = parseKeys(Deno.env.get('SUPABASE_SECRET_KEYS'))
+  if (typeof keys.default === 'string' && keys.default) return keys.default
+  return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-  const anonKey = parseKeys(Deno.env.get('SUPABASE_PUBLISHABLE_KEYS')).default as string | undefined
-  const serviceKey = parseKeys(Deno.env.get('SUPABASE_SECRET_KEYS')).default as string | undefined
+  const anonKey = resolveAnonKey()
+  const serviceKey = resolveServiceKey()
   if (!supabaseUrl || !anonKey || !serviceKey) {
     return json({ error: 'Founder Console backend is not configured.' }, 500)
   }
@@ -75,7 +89,7 @@ Deno.serve(async (req) => {
   })
   const { data: allow } = await admin
     .from('platform_admins')
-    .select('user_id, username')
+    .select('user_id, username, must_change_password')
     .eq('user_id', signIn.user.id)
     .maybeSingle()
 
@@ -98,6 +112,10 @@ Deno.serve(async (req) => {
       access_token: signIn.session.access_token,
       refresh_token: signIn.session.refresh_token,
     },
-    user: { id: signIn.user.id, username: allow.username || username },
+    user: {
+      id: signIn.user.id,
+      username: allow.username || username,
+      must_change_password: Boolean(allow.must_change_password),
+    },
   })
 })

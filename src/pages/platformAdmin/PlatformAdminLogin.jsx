@@ -8,6 +8,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { usePlatformAdmin } from '../../hooks/usePlatformAdmin'
 import { validateFounderLogin } from '../../lib/auth'
 import { PLATFORM_ADMIN_HOME } from '../../lib/platformAdmin'
+import { FOUNDER_MUST_CHANGE_PATH } from '../../../supabase/functions/_shared/founder-gate.js'
 import { supabase } from '../../lib/supabase'
 import { founderLogin } from '../../services/platformAdmin'
 
@@ -16,7 +17,7 @@ const NOT_AUTHORIZED = 'You are not authorized to access the Platform Admin Pane
 export default function PlatformAdminLogin() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { isAdmin, checked, checking, verify } = usePlatformAdmin()
+  const { isAdmin, mustChangePassword, checked, checking, verify } = usePlatformAdmin()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -26,7 +27,9 @@ export default function PlatformAdminLogin() {
     if (user && !checked && !checking) verify()
   }, [user, checked, checking, verify])
 
-  if (user && checked && isAdmin) return <Navigate to={PLATFORM_ADMIN_HOME} replace />
+  if (user && checked && isAdmin) {
+    return <Navigate to={mustChangePassword ? FOUNDER_MUST_CHANGE_PATH : PLATFORM_ADMIN_HOME} replace />
+  }
 
   async function onSubmit(event) {
     event.preventDefault()
@@ -54,7 +57,10 @@ export default function PlatformAdminLogin() {
       setError(NOT_AUTHORIZED)
       return
     }
-    navigate(PLATFORM_ADMIN_HOME, { replace: true })
+    // A freshly provisioned founder must rotate the temporary password before
+    // any privileged page or API is available.
+    const mustChange = Boolean(data?.user?.must_change_password)
+    navigate(mustChange ? FOUNDER_MUST_CHANGE_PATH : PLATFORM_ADMIN_HOME, { replace: true })
   }
 
   return (

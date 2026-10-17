@@ -24,6 +24,16 @@
 // username + password. Passwords are never written to any application table
 // and are never logged or returned.
 //
+// Every provisioned/rotated account is created with must_change_password = true,
+// so the founder must set a new password on first login before any privileged
+// action is allowed. The flag is only cleared by the platform-admin
+// change_password action after Supabase Auth accepts the new password.
+//
+// After the first successful bootstrap, retire this endpoint:
+//   supabase secrets unset PLATFORM_ADMIN_SETUP_SECRET
+// (and optionally redeploy). A new username is also refused while any admin
+// exists unless the request explicitly includes "allow_new": true.
+//
 // USAGE (run once to create the founder, or again to rotate the password):
 //   curl -i -X POST "$SUPABASE_URL/functions/v1/platform-admin-setup" \
 //     -H "Content-Type: application/json" \
@@ -153,6 +163,9 @@ Deno.serve(async (req) => {
   const username = normalizeUsername(payload.username)
   const password = String(payload.password || '')
   const notes = String(payload.notes || 'Founder').slice(0, 200)
+  // Bootstrap always requires the founder to rotate the temporary password on
+  // first login. Callers cannot silently skip the gate.
+  const mustChangePassword = payload.must_change_password === false ? false : true
 
   if (!USERNAME_RE.test(username)) {
     return json({ error: 'Username must be 3-24 letters, numbers or underscores.' }, 400)
@@ -194,13 +207,19 @@ Deno.serve(async (req) => {
       }
       const { error: relinkError } = await admin
         .from('platform_admins')
-        .update({ user_id: recreated.user.id, email, notes })
+        .update({ user_id: recreated.user.id, email, notes, must_change_password: true })
         .eq('user_id', existing.user_id)
       if (relinkError) {
         await admin.auth.admin.deleteUser(recreated.user.id)
         return json({ error: 'Could not re-link the platform admin record.' }, 502)
       }
-      return json({ ok: true, created: true, updated: false, user_id: recreated.user.id })
+      return json({
+        ok: true,
+        created: true,
+        updated: false,
+        must_change_password: true,
+        user_id: recreated.user.id,
+      })
     }
 
     if (updateError) {
@@ -209,14 +228,37 @@ Deno.serve(async (req) => {
 
     const { error: touchError } = await admin
       .from('platform_admins')
-      .update({ email, notes })
+      .update({ email, notes, must_change_password: true })
       .eq('user_id', existing.user_id)
     if (touchError) return json({ error: 'Could not update the platform admin record.' }, 502)
 
-    return json({ ok: true, created: false, updated: true, user_id: existing.user_id })
+    return json({
+      ok: true,
+      created: false,
+      updated: true,
+      must_change_password: true,
+      user_id: existing.user_id,
+    })
   }
 
-  // --- No allowlist row: create the auth user, then link the allowlist row ---
+  // --- No allowlist row. Guard against accidental second bootstrap: once any
+  //     platform admin exists, a brand-new username must be explicitly allowed. ---
+  const { count: adminCount, error: countError } = await admin
+    .from('platform_admins')
+    .select('user_id', { count: 'exact', head: true })
+  if (countError) return json({ error: 'Could not read the platform admin allowlist.' }, 502)
+  if ((adminCount || 0) > 0 && payload.allow_new !== true) {
+    return json(
+      {
+        error:
+          'A founder account already exists. Re-run with the existing username to rotate its password, ' +
+          'or pass "allow_new": true to provision an additional administrator deliberately.',
+      },
+      409,
+    )
+  }
+
+  // --- Create the auth user, then link the allowlist row ---
   const { data: created, error: createError } = await admin.auth.admin.createUser({
     email,
     password,
@@ -243,6 +285,7 @@ Deno.serve(async (req) => {
     username,
     email,
     notes,
+    must_change_password: mustChangePassword,
   })
 
   if (allowError) {
@@ -254,5 +297,11 @@ Deno.serve(async (req) => {
     return json({ error: 'Could not grant platform-admin access.' }, 502)
   }
 
-  return json({ ok: true, created: true, updated: false, user_id: created.user.id })
+  return json({
+    ok: true,
+    created: true,
+    updated: false,
+    must_change_password: mustChangePassword,
+    user_id: created.user.id,
+  })
 })

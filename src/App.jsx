@@ -39,6 +39,7 @@ const Collections = lazy(() => import('./pages/dashboard/tableWise/Collections')
 const OrderHistory = lazy(() => import('./pages/dashboard/tableWise/OrderHistory'))
 const Reports = lazy(() => import('./pages/dashboard/Reports'))
 const PlatformAdminLogin = lazy(() => import('./pages/platformAdmin/PlatformAdminLogin'))
+const PlatformAdminChangePassword = lazy(() => import('./pages/platformAdmin/PlatformAdminChangePassword'))
 const PlatformAdminDashboard = lazy(() => import('./pages/platformAdmin/PlatformAdminDashboard'))
 const PlatformAdminRestaurants = lazy(() => import('./pages/platformAdmin/PlatformAdminRestaurants'))
 const PlatformAdminRestaurantDetail = lazy(() => import('./pages/platformAdmin/PlatformAdminRestaurantDetail'))
@@ -66,6 +67,9 @@ export default function App() {
             <Routes>
               <Route path="/platform-admin/login" element={<PlatformAdminLogin />} />
               <Route element={<PlatformAdminRoute />}>
+                {/* Forced first-login password change. Rendered without the
+                    console layout so no privileged page is reachable. */}
+                <Route path="/platform-admin/change-password" element={<PlatformAdminChangePassword />} />
                 <Route path="/platform-admin" element={<PlatformAdminLayout />}>
                   <Route index element={<PlatformAdminDashboard />} />
                   <Route path="restaurants" element={<PlatformAdminRestaurants />} />

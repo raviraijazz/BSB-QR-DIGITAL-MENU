@@ -89,18 +89,18 @@ test('validateFounderLogin rejects bad usernames and empty passwords', () => {
 test('validateFounderPasswordChange enforces length, match and difference', () => {
   assert.match(
     validateFounderPasswordChange({ currentPassword: 'a', newPassword: 'short', confirmPassword: 'short' }),
-    /8 characters/,
+    /10 characters/,
   )
   assert.equal(
-    validateFounderPasswordChange({ currentPassword: 'a', newPassword: 'longenough1', confirmPassword: 'different1' }),
+    validateFounderPasswordChange({ currentPassword: 'a', newPassword: 'LongEnough1!', confirmPassword: 'Different12!' }),
     'Passwords do not match',
   )
-  assert.equal(
-    validateFounderPasswordChange({ currentPassword: 'samepass1', newPassword: 'samepass1', confirmPassword: 'samepass1' }),
-    'New password must be different',
+  assert.match(
+    validateFounderPasswordChange({ currentPassword: 'SamePass1!', newPassword: 'SamePass1!', confirmPassword: 'SamePass1!' }),
+    /different/,
   )
   assert.equal(
-    validateFounderPasswordChange({ currentPassword: 'oldpass12', newPassword: 'newpass12', confirmPassword: 'newpass12' }),
+    validateFounderPasswordChange({ currentPassword: 'OldPass12!', newPassword: 'NewPass12!', confirmPassword: 'NewPass12!' }),
     '',
   )
 })

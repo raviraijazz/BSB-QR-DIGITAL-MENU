@@ -14,7 +14,10 @@
 -- Enforcement model (server-side, never client-trusting):
 --   * restaurant_effective_status() derives Active/Frozen/Blocked/Expired.
 --   * restaurant_access_ok() gates owner/waiter access.
---   * platform_is_admin() checks the platform_admins allowlist for auth.uid().
+--   * platform_is_admin() checks the platform_admins allowlist for auth.uid()
+--     AND that the founder has completed the mandatory first-login password
+--     change (must_change_password = false). Until then every privileged RPC,
+--     support session and audit read is denied server-side.
 --   * platform_support_active() grants a platform admin tenant access ONLY for
 --     the single restaurant of an active, unexpired support session.
 --   * is_restaurant_owner() = genuine owner OR an active founder support session,
@@ -43,6 +46,20 @@ create index if not exists restaurants_valid_until_idx on public.restaurants (va
 -- ---------------------------------------------------------------------------
 alter table public.profiles add column if not exists is_blocked boolean not null default false;
 alter table public.waiters add column if not exists is_blocked boolean not null default false;
+
+-- ---------------------------------------------------------------------------
+-- 2b. First-login password gate.
+-- The founder is provisioned with a temporary password and must rotate it
+-- before any privileged action. Defaults to true (fail closed) so a manually
+-- inserted allowlist row cannot skip the gate. Only the setup function and the
+-- platform-admin change_password action (service role, after a successful Auth
+-- password update) may insert/clear this flag; anon/authenticated have no write
+-- access to platform_admins.
+-- ---------------------------------------------------------------------------
+alter table public.platform_admins
+  add column if not exists must_change_password boolean not null default true;
+alter table public.platform_admins
+  add column if not exists password_changed_at timestamptz;
 
 -- ---------------------------------------------------------------------------
 -- 3. Audited founder support (impersonation) sessions
@@ -83,7 +100,12 @@ stable
 security definer
 set search_path = public
 as $$
-  select exists (select 1 from public.platform_admins a where a.user_id = auth.uid());
+  select exists (
+    select 1
+    from public.platform_admins a
+    where a.user_id = auth.uid()
+      and coalesce(a.must_change_password, false) = false
+  );
 $$;
 
 create or replace function public.restaurant_effective_status(p_restaurant_id uuid)

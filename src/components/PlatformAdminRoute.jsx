@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { usePlatformAdmin } from '../hooks/usePlatformAdmin'
+import { founderGateRedirect } from '../../supabase/functions/_shared/founder-gate.js'
 import Button from './Button'
 import Spinner from './Spinner'
 
@@ -27,7 +28,7 @@ function AccessDenied() {
 
 export default function PlatformAdminRoute() {
   const { user, loading: authLoading } = useAuth()
-  const { isAdmin, checked, checking, error, verify } = usePlatformAdmin()
+  const { isAdmin, mustChangePassword, checked, checking, error, verify } = usePlatformAdmin()
   const location = useLocation()
 
   useEffect(() => {
@@ -50,5 +51,16 @@ export default function PlatformAdminRoute() {
     )
   }
   if (!isAdmin) return <AccessDenied />
+
+  // First-login gate: until the temporary password is rotated on the server,
+  // every Founder Console route is replaced by the password-change page, and
+  // the change page itself is unavailable once the gate is cleared.
+  const redirect = founderGateRedirect({
+    isAdmin,
+    mustChangePassword,
+    pathname: location.pathname,
+  })
+  if (redirect) return <Navigate to={redirect} replace />
+
   return <Outlet />
 }

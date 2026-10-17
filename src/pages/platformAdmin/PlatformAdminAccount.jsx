@@ -8,7 +8,7 @@ import { validateFounderPasswordChange } from '../../lib/auth'
 import { changePlatformAdminPassword } from '../../services/platformAdmin'
 
 export default function PlatformAdminAccount() {
-  const { admin } = usePlatformAdmin()
+  const { admin, verify } = usePlatformAdmin()
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -27,7 +27,11 @@ export default function PlatformAdminAccount() {
     setBusy(true)
     setError('')
     setSuccess('')
-    const { error: nextError } = await changePlatformAdminPassword({ currentPassword, newPassword })
+    const { error: nextError } = await changePlatformAdminPassword({
+      currentPassword,
+      newPassword,
+      confirmPassword,
+    })
     setBusy(false)
     if (nextError) {
       setError(nextError.message)
@@ -37,6 +41,7 @@ export default function PlatformAdminAccount() {
     setNewPassword('')
     setConfirmPassword('')
     setSuccess('Your password has been updated.')
+    await verify()
   }
 
   return (
@@ -56,7 +61,7 @@ export default function PlatformAdminAccount() {
           <Field label="Current password">
             <PasswordInput value={currentPassword} onChange={setCurrentPassword} />
           </Field>
-          <Field label="New password" hint="At least 8 characters.">
+          <Field label="New password" hint="At least 10 characters, using three of: lowercase, uppercase, numbers, symbols.">
             <PasswordInput value={newPassword} onChange={setNewPassword} autoComplete="new-password" />
           </Field>
           <Field label="Confirm new password">

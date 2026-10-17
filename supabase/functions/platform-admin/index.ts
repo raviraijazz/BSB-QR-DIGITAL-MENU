@@ -3,6 +3,7 @@
 // platform_admins allowlist. Service-role keys never reach the browser.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { isFounderActionAllowed, validateNewFounderPassword } from '../_shared/founder-gate.js'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,6 +25,20 @@ function parseKeys(raw: string | undefined): Record<string, unknown> {
   } catch {
     return {}
   }
+}
+
+// New projects expose SUPABASE_PUBLISHABLE_KEYS / SUPABASE_SECRET_KEYS as JSON;
+// older projects expose SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY.
+function resolveAnonKey() {
+  const keys = parseKeys(Deno.env.get('SUPABASE_PUBLISHABLE_KEYS'))
+  if (typeof keys.default === 'string' && keys.default) return keys.default
+  return Deno.env.get('SUPABASE_ANON_KEY') || ''
+}
+
+function resolveServiceKey() {
+  const keys = parseKeys(Deno.env.get('SUPABASE_SECRET_KEYS'))
+  if (typeof keys.default === 'string' && keys.default) return keys.default
+  return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 }
 
 function toSheetCsvUrl(url: string): string | null {
@@ -80,8 +95,8 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-  const anonKey = parseKeys(Deno.env.get('SUPABASE_PUBLISHABLE_KEYS')).default as string | undefined
-  const serviceKey = parseKeys(Deno.env.get('SUPABASE_SECRET_KEYS')).default as string | undefined
+  const anonKey = resolveAnonKey()
+  const serviceKey = resolveServiceKey()
   if (!supabaseUrl || !anonKey || !serviceKey) {
     return json({ error: 'Founder Console backend is not configured.' }, 500)
   }
@@ -102,7 +117,7 @@ Deno.serve(async (req) => {
 
   const { data: allow } = await admin
     .from('platform_admins')
-    .select('user_id, username, email')
+    .select('user_id, username, email, must_change_password')
     .eq('user_id', actor.id)
     .maybeSingle()
 
@@ -123,6 +138,7 @@ Deno.serve(async (req) => {
       .maybeSingle()
     return json({
       isAdmin: Boolean(allow),
+      mustChangePassword: Boolean(allow?.must_change_password),
       user: {
         id: actor.id,
         // Never expose the synthetic internal auth email to the client.
@@ -132,6 +148,19 @@ Deno.serve(async (req) => {
   }
 
   if (!allow) return json({ error: 'Platform admin access required.' }, 403)
+
+  // First-login gate, enforced server-side. A founder provisioned with a
+  // temporary password may only inspect whoami and rotate that password; every
+  // other privileged action is rejected until the flag is cleared.
+  if (!isFounderActionAllowed(action, Boolean(allow.must_change_password))) {
+    return json(
+      {
+        error: 'Password change required before using the Founder Console.',
+        code: 'password_change_required',
+      },
+      403,
+    )
+  }
 
   async function audit(name: string, targetRestaurantId: string | null, details: Record<string, unknown> = {}) {
     await admin.from('platform_audit_log').insert({
@@ -145,30 +174,58 @@ Deno.serve(async (req) => {
 
   try {
     if (action === 'change_password') {
+      const mustChange = Boolean(allow.must_change_password)
       const currentPassword = String(payload.current_password || '')
       const newPassword = String(payload.new_password || '')
-      if (!currentPassword || !newPassword) {
-        return json({ error: 'Current and new password are required.' }, 400)
+      const confirmPassword = String(payload.confirm_password || '')
+
+      if (mustChange) {
+        // Forced first-login flow: the founder just authenticated with the
+        // temporary password, so a current-password prompt is optional. A
+        // supplied current password is still verified below.
+        const validation = validateNewFounderPassword(newPassword, confirmPassword)
+        if (validation) return json({ error: validation }, 400)
+      } else {
+        if (!currentPassword) return json({ error: 'Current password is required.' }, 400)
+        const validation = validateNewFounderPassword(newPassword, confirmPassword, currentPassword)
+        if (validation) return json({ error: validation }, 400)
       }
-      if (newPassword.length < 8) {
-        return json({ error: 'New password must be at least 8 characters.' }, 400)
-      }
-      if (newPassword === currentPassword) {
-        return json({ error: 'New password must be different from the current password.' }, 400)
-      }
+
       if (!actor.email) {
         return json({ error: 'Password change is unavailable for this account.' }, 400)
       }
-      // Verify the current password before rotating. No email/OTP is involved.
-      const { error: verifyError } = await userClient.auth.signInWithPassword({
-        email: actor.email,
-        password: currentPassword,
+
+      // Verify any supplied current password. No email/OTP is involved.
+      if (currentPassword) {
+        const { error: verifyError } = await userClient.auth.signInWithPassword({
+          email: actor.email,
+          password: currentPassword,
+        })
+        if (verifyError) return json({ error: 'Current password is incorrect.' }, 400)
+      }
+
+      const { error: updateError } = await admin.auth.admin.updateUserById(actor.id, {
+        password: newPassword,
       })
-      if (verifyError) return json({ error: 'Current password is incorrect.' }, 400)
-      const { error: updateError } = await admin.auth.admin.updateUserById(actor.id, { password: newPassword })
       if (updateError) return json({ error: 'Could not update password.' }, 400)
-      await audit('change_password', null, {})
-      return json({ ok: true })
+
+      // Clear the gate only AFTER Supabase Auth accepted the new password.
+      const { error: flagError } = await admin
+        .from('platform_admins')
+        .update({ must_change_password: false, password_changed_at: new Date().toISOString() })
+        .eq('user_id', actor.id)
+      if (flagError) {
+        return json(
+          {
+            error:
+              'Password was updated but the first-login flag could not be cleared. Retry the change.',
+          },
+          500,
+        )
+      }
+
+      await audit('change_password', null, { forced: mustChange })
+      return json({ ok: true, must_change_password: false })
     }
 
     if (action === 'overview') {

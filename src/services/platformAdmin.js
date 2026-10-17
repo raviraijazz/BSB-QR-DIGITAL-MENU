@@ -55,10 +55,11 @@ export function fetchSheet(url) {
   return platformAdminCall('fetch_sheet', { url })
 }
 
-export function changePlatformAdminPassword({ currentPassword, newPassword }) {
+export function changePlatformAdminPassword({ currentPassword = '', newPassword, confirmPassword }) {
   return platformAdminCall('change_password', {
     current_password: currentPassword,
     new_password: newPassword,
+    confirm_password: confirmPassword,
   })
 }
 
