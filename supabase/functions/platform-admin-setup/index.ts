@@ -1,29 +1,46 @@
 // BSB Digital Menu — Founder Console bootstrap / password rotation
 // =========================================================================
-// Protected, NON-PUBLIC endpoint. It is disabled unless the operator sets a
-// strong PLATFORM_ADMIN_SETUP_SECRET in the function environment, and every
-// call must present that secret in the x-setup-secret header.
+// Protected, NON-PUBLIC endpoint. It is disabled unless the operator sets
+// PLATFORM_ADMIN_SETUP_SECRET in the function secrets, and every call must
+// present that secret in the `x-setup-secret` header.
+//
+// ROUTING: this handler serves the deployed function ROOT
+//   POST {SUPABASE_URL}/functions/v1/platform-admin-setup
+// Deno.serve() receives every sub-path too, so a trailing slash also works.
+//
+// STATUS CODES (no secret value is ever echoed):
+//   200 bootstrap/rotation succeeded
+//   400 invalid username/password body
+//   401 missing or invalid x-setup-secret
+//   405 method not allowed (only POST; OPTIONS is CORS preflight)
+//   409 username already linked / orphan auth user conflict
+//   500 server not configured (missing SUPABASE_URL or service key)
+//   502 Supabase Auth/DB rejected the operation
+//   503 endpoint disabled (PLATFORM_ADMIN_SETUP_SECRET not set)
 //
 // It provisions the founder's Supabase Auth account through the Admin Auth API
 // using a synthetic internal email, with email_confirm: true so no email
 // verification / OTP / magic link is ever required. The founder types only a
-// username + password. Passwords are never written to any application table.
+// username + password. Passwords are never written to any application table
+// and are never logged or returned.
 //
 // USAGE (run once to create the founder, or again to rotate the password):
-//   curl -X POST "$SUPABASE_URL/functions/v1/platform-admin-setup" \
+//   curl -i -X POST "$SUPABASE_URL/functions/v1/platform-admin-setup" \
 //     -H "Content-Type: application/json" \
 //     -H "x-setup-secret: $PLATFORM_ADMIN_SETUP_SECRET" \
 //     -d '{"username":"founder","password":"a-strong-passphrase"}'
 //
-// Deploy with: supabase functions deploy platform-admin-setup
-// Set the secret with: supabase secrets set PLATFORM_ADMIN_SETUP_SECRET=...
-// After bootstrap you may unset the secret to fully disable this endpoint.
+// Deploy:      supabase functions deploy platform-admin-setup
+// Set secret:  supabase secrets set PLATFORM_ADMIN_SETUP_SECRET=...
+// Disable:     supabase secrets unset PLATFORM_ADMIN_SETUP_SECRET
+// Redeploy after changing this file: `supabase functions deploy ...`.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-setup-secret',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,24}$/
@@ -45,25 +62,82 @@ function platformAuthEmail(username: string) {
   return `${username}@${AUTH_EMAIL_DOMAIN}`
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
+// Usernames allow `_`, which is a single-character wildcard in SQL LIKE, so
+// escape LIKE metacharacters before using an ilike lookup. This keeps the
+// case-insensitive match safe for legacy mixed-case rows.
+function escapeLike(value: string) {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`)
+}
 
-  const setupSecret = Deno.env.get('PLATFORM_ADMIN_SETUP_SECRET') || ''
-  // Disabled (not just unauthorized) until the operator configures a secret.
-  if (setupSecret.length < 16) return json({ error: 'Not found' }, 404)
-  const provided = req.headers.get('x-setup-secret') || ''
-  if (provided !== setupSecret) return json({ error: 'Not found' }, 404)
+// Constant-time-ish comparison so the response timing does not reveal how much
+// of the secret matched. Never logs or returns either value.
+function secretsMatch(provided: string, expected: string) {
+  const a = new TextEncoder().encode(provided)
+  const b = new TextEncoder().encode(expected)
+  let diff = a.length ^ b.length
+  const max = Math.max(a.length, b.length)
+  for (let i = 0; i < max; i += 1) {
+    diff |= (a[i] ?? 0) ^ (b[i] ?? 0)
+  }
+  return diff === 0
+}
+
+// New projects expose SUPABASE_SECRET_KEYS (JSON). Older/Dashboard-created
+// projects still expose SUPABASE_SERVICE_ROLE_KEY. Support both.
+function resolveServiceKey() {
+  try {
+    const parsed = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}')
+    if (typeof parsed.default === 'string' && parsed.default) return parsed.default
+  } catch {
+    /* fall through */
+  }
+  return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+}
+
+function looksLikeMissingUser(message: string) {
+  const text = message.toLowerCase()
+  return text.includes('not found') || text.includes('does not exist') || text.includes('no user')
+}
+
+function looksLikeDuplicate(message: string) {
+  const text = message.toLowerCase()
+  return text.includes('already') || text.includes('registered') || text.includes('duplicate') || text.includes('unique')
+}
+
+Deno.serve(async (req) => {
+  // Any path under the function root reaches this handler; the root endpoint is
+  // the intended target. We do not require a sub-route.
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed. Use POST.' }), {
+      status: 405,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json', Allow: 'POST, OPTIONS' },
+    })
+  }
+
+  const setupSecret = (Deno.env.get('PLATFORM_ADMIN_SETUP_SECRET') || '').trim()
+  if (!setupSecret) {
+    return json(
+      {
+        error:
+          'Setup endpoint is disabled. Set PLATFORM_ADMIN_SETUP_SECRET in the function secrets and redeploy, then retry.',
+      },
+      503,
+    )
+  }
+
+  const provided = (req.headers.get('x-setup-secret') || '').trim()
+  if (!provided) return json({ error: 'Missing x-setup-secret header.' }, 401)
+  if (!secretsMatch(provided, setupSecret)) return json({ error: 'Invalid setup secret.' }, 401)
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-  let secretKeys: Record<string, unknown> = {}
-  try {
-    secretKeys = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}')
-  } catch {
-    secretKeys = {}
+  const serviceKey = resolveServiceKey()
+  if (!supabaseUrl || !serviceKey) {
+    return json(
+      { error: 'Server is not configured: SUPABASE_URL or the service-role key is missing.' },
+      500,
+    )
   }
-  const serviceKey = typeof secretKeys.default === 'string' ? secretKeys.default : ''
-  if (!supabaseUrl || !serviceKey) return json({ error: 'Server is not configured' }, 500)
 
   const admin = createClient(supabaseUrl, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -73,7 +147,7 @@ Deno.serve(async (req) => {
   try {
     payload = await req.json()
   } catch {
-    payload = {}
+    return json({ error: 'Request body must be JSON.' }, 400)
   }
 
   const username = normalizeUsername(payload.username)
@@ -81,21 +155,23 @@ Deno.serve(async (req) => {
   const notes = String(payload.notes || 'Founder').slice(0, 200)
 
   if (!USERNAME_RE.test(username)) {
-    return json({ error: 'Username must be 3–24 letters, numbers or underscores' }, 400)
+    return json({ error: 'Username must be 3-24 letters, numbers or underscores.' }, 400)
   }
   if (password.length < MIN_PASSWORD_LENGTH) {
-    return json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` }, 400)
+    return json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` }, 400)
   }
 
   const email = platformAuthEmail(username)
 
-  const { data: existing } = await admin
+  const { data: existing, error: lookupError } = await admin
     .from('platform_admins')
     .select('user_id, username')
-    .eq('username', username)
+    .ilike('username', escapeLike(username))
     .maybeSingle()
 
-  // Rotate an existing founder's password (no email/OTP involved).
+  if (lookupError) return json({ error: 'Could not read the platform admin allowlist.' }, 502)
+
+  // --- Existing allowlist row: rotate the password / re-confirm the account ---
   if (existing?.user_id) {
     const { error: updateError } = await admin.auth.admin.updateUserById(existing.user_id, {
       password,
@@ -103,33 +179,63 @@ Deno.serve(async (req) => {
       email_confirm: true,
       user_metadata: { role: 'platform_admin', username },
     })
-    if (updateError) {
-      return json({ error: updateError.message || 'Could not update founder password.' }, 400)
+
+    if (updateError && looksLikeMissingUser(updateError.message)) {
+      // Allowlist row is stale (auth user deleted). Recreate the auth user and
+      // re-link the same allowlist row instead of duplicating it.
+      const { data: recreated, error: recreateError } = await admin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { role: 'platform_admin', username },
+      })
+      if (recreateError || !recreated.user) {
+        return json({ error: 'Could not recreate the founder auth account.' }, 502)
+      }
+      const { error: relinkError } = await admin
+        .from('platform_admins')
+        .update({ user_id: recreated.user.id, email, notes })
+        .eq('user_id', existing.user_id)
+      if (relinkError) {
+        await admin.auth.admin.deleteUser(recreated.user.id)
+        return json({ error: 'Could not re-link the platform admin record.' }, 502)
+      }
+      return json({ ok: true, created: true, updated: false, user_id: recreated.user.id })
     }
-    await admin.from('platform_admins').update({ email, notes }).eq('user_id', existing.user_id)
+
+    if (updateError) {
+      return json({ error: updateError.message || 'Could not update the founder password.' }, 502)
+    }
+
+    const { error: touchError } = await admin
+      .from('platform_admins')
+      .update({ email, notes })
+      .eq('user_id', existing.user_id)
+    if (touchError) return json({ error: 'Could not update the platform admin record.' }, 502)
+
     return json({ ok: true, created: false, updated: true, user_id: existing.user_id })
   }
 
-  // Create the founder auth user (auto-confirmed synthetic email).
+  // --- No allowlist row: create the auth user, then link the allowlist row ---
   const { data: created, error: createError } = await admin.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
     user_metadata: { role: 'platform_admin', username },
   })
+
   if (createError || !created.user) {
-    const text = String(createError?.message || '').toLowerCase()
-    if (text.includes('already') || text.includes('registered')) {
+    if (looksLikeDuplicate(createError?.message || '')) {
       return json(
         {
           error:
             'An auth user already exists for this username but is not linked in platform_admins. ' +
-            'Remove the orphan auth user or insert its platform_admins row, then retry.',
+            'Link or remove that auth user, then retry. No changes were made.',
         },
         409,
       )
     }
-    return json({ error: createError?.message || 'Could not create founder account.' }, 400)
+    return json({ error: createError?.message || 'Could not create the founder auth account.' }, 502)
   }
 
   const { error: allowError } = await admin.from('platform_admins').insert({
@@ -138,14 +244,15 @@ Deno.serve(async (req) => {
     email,
     notes,
   })
+
   if (allowError) {
+    // Roll back the auth user so a failed bootstrap leaves no orphan account.
     await admin.auth.admin.deleteUser(created.user.id)
-    const text = String(allowError.message || '').toLowerCase()
-    if (text.includes('duplicate') || text.includes('unique')) {
+    if (looksLikeDuplicate(allowError.message)) {
       return json({ error: 'This founder username is already in use.' }, 409)
     }
-    return json({ error: 'Could not grant platform-admin access.' }, 400)
+    return json({ error: 'Could not grant platform-admin access.' }, 502)
   }
 
-  return json({ ok: true, created: true, user_id: created.user.id })
+  return json({ ok: true, created: true, updated: false, user_id: created.user.id })
 })
