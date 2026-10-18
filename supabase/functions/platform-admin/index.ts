@@ -1,6 +1,12 @@
 // BSB Digital Menu — Phase 22 Founder Console API
 // Every privileged action is authorized server-side against the
 // platform_admins allowlist. Service-role keys never reach the browser.
+//
+// DEPLOY WITH THE SUPABASE CLI FROM THE REPOSITORY ROOT:
+//   supabase functions deploy platform-admin
+// This function imports the sibling ../_shared/founder-gate.js. The CLI bundles
+// that shared file automatically; the Dashboard single-file editor cannot, and
+// fails with "Module not found .../_shared/founder-gate.js".
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { isFounderActionAllowed, validateNewFounderPassword } from '../_shared/founder-gate.js'
