@@ -2,14 +2,20 @@
 // Every privileged action is authorized server-side against the
 // platform_admins allowlist. Service-role keys never reach the browser.
 //
-// DEPLOY WITH THE SUPABASE CLI FROM THE REPOSITORY ROOT:
-//   supabase functions deploy platform-admin
-// This function imports the sibling ../_shared/founder-gate.js. The CLI bundles
-// that shared file automatically; the Dashboard single-file editor cannot, and
-// fails with "Module not found .../_shared/founder-gate.js".
+// SELF-CONTAINED: safe to paste into the Supabase Dashboard function editor.
+// It imports nothing but the Supabase JS client from esm.sh, so there is no
+// sibling ../_shared file to resolve.
+//
+// Dashboard settings for this function:
+//   Verify JWT = ON
+//   Entry point: index.ts (this file)
+//
+// First-login gate (server-enforced): a founder provisioned with a temporary
+// password may only call whoami and change_password. Every other action is
+// rejected with 403 until Supabase Auth accepts a new password and the
+// must_change_password flag is cleared.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { isFounderActionAllowed, validateNewFounderPassword } from '../_shared/founder-gate.js'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,6 +24,50 @@ const corsHeaders = {
 
 const MAX_PAGE_SIZE = 100
 
+// ---------------------------------------------------------------------------
+// First-login password gate (inlined so this file is self-contained).
+// ---------------------------------------------------------------------------
+const FOUNDER_PASSWORD_MIN_LENGTH = 10
+const FOUNDER_LOCKED_ACTIONS = ['whoami', 'change_password']
+
+function isFounderActionAllowed(action: string, mustChangePassword: boolean) {
+  if (!mustChangePassword) return true
+  return FOUNDER_LOCKED_ACTIONS.includes(String(action || ''))
+}
+
+function passwordClasses(password: string) {
+  return [
+    /[a-z]/.test(password),
+    /[A-Z]/.test(password),
+    /[0-9]/.test(password),
+    /[^a-zA-Z0-9]/.test(password),
+  ].filter(Boolean).length
+}
+
+function validateNewFounderPassword(
+  newPassword: string,
+  confirmPassword: string,
+  currentPassword = '',
+) {
+  const password = String(newPassword || '')
+  if (!password) return 'New password is required'
+  if (currentPassword && password === currentPassword) {
+    return 'New password must be different from the current password'
+  }
+  if (password.length < FOUNDER_PASSWORD_MIN_LENGTH) {
+    return `New password must be at least ${FOUNDER_PASSWORD_MIN_LENGTH} characters`
+  }
+  if (passwordClasses(password) < 3) {
+    return 'Use at least three of: lowercase, uppercase, numbers, symbols'
+  }
+  if (!confirmPassword) return 'Confirm password required'
+  if (password !== confirmPassword) return 'Passwords do not match'
+  return ''
+}
+
+// ---------------------------------------------------------------------------
+// Response / key helpers
+// ---------------------------------------------------------------------------
 function json(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,

@@ -35,7 +35,7 @@ export default function PlatformAdminRoute() {
     if (!authLoading && user && !checked && !checking) verify()
   }, [authLoading, user, checked, checking, verify])
 
-  if (authLoading || (user && !checked)) return <Spinner />
+  if (authLoading || (user && !checked)) return <Spinner full label="Loading Founder Console..." />
   if (!user) return <Navigate to="/platform-admin/login" replace state={{ from: location.pathname }} />
   if (error) {
     return (

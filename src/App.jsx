@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import AppErrorBoundary from './components/AppErrorBoundary'
 import GuestRoute from './components/GuestRoute'
 import PlatformAdminRoute from './components/PlatformAdminRoute'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -63,7 +64,8 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <PlatformAdminProvider>
-          <Suspense fallback={<Spinner />}>
+          <AppErrorBoundary>
+            <Suspense fallback={<Spinner full label="Loading Founder Console..." />}>
             <Routes>
               <Route path="/platform-admin/login" element={<PlatformAdminLogin />} />
               <Route element={<PlatformAdminRoute />}>
@@ -146,6 +148,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
+          </AppErrorBoundary>
         </PlatformAdminProvider>
       </BrowserRouter>
     </AuthProvider>

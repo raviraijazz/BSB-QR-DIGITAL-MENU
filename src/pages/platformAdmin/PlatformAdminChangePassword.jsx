@@ -67,7 +67,6 @@ export default function PlatformAdminChangePassword() {
           </Field>
           <Field label="Confirm new password">
             <PasswordInput
-              className={inputClass}
               value={confirmPassword}
               onChange={setConfirmPassword}
               autoComplete="new-password"
