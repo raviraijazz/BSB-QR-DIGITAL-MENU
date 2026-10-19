@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { whoami } from '../services/platformAdmin'
+import { SESSION_REQUIRED, whoami } from '../services/platformAdmin'
 import { useAuth } from './useAuth'
 
 const PlatformAdminContext = createContext(null)
@@ -10,6 +10,7 @@ export function PlatformAdminProvider({ children }) {
   const [mustChangePassword, setMustChangePassword] = useState(false)
   const [checked, setChecked] = useState(false)
   const [checking, setChecking] = useState(false)
+  const [needsSignIn, setNeedsSignIn] = useState(false)
   const [error, setError] = useState('')
 
   // Reset verification whenever the signed-in user changes.
@@ -18,6 +19,7 @@ export function PlatformAdminProvider({ children }) {
     setMustChangePassword(false)
     setChecked(false)
     setChecking(false)
+    setNeedsSignIn(false)
     setError('')
   }, [user?.id])
 
@@ -25,17 +27,22 @@ export function PlatformAdminProvider({ children }) {
     if (!user) {
       setAdmin(null)
       setMustChangePassword(false)
+      setNeedsSignIn(false)
       setChecked(true)
       return null
     }
     setChecking(true)
     setError('')
+    setNeedsSignIn(false)
     const { data, error: nextError } = await whoami()
     setChecking(false)
     setChecked(true)
     if (nextError) {
       setAdmin(null)
       setMustChangePassword(false)
+      // An ended session is not a backend/configuration failure: the user must
+      // sign in again, so the guard redirects instead of showing an error card.
+      setNeedsSignIn(nextError.code === SESSION_REQUIRED)
       setError(nextError.message)
       return null
     }
@@ -54,12 +61,13 @@ export function PlatformAdminProvider({ children }) {
       admin,
       isAdmin: Boolean(admin),
       mustChangePassword,
+      needsSignIn,
       checked,
       checking,
       error,
       verify,
     }),
-    [admin, mustChangePassword, checked, checking, error, verify],
+    [admin, mustChangePassword, needsSignIn, checked, checking, error, verify],
   )
 
   return <PlatformAdminContext.Provider value={value}>{children}</PlatformAdminContext.Provider>

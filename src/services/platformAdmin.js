@@ -1,27 +1,103 @@
 import { supabase } from '../lib/supabase'
 
+// Client-side marker for "the browser has no usable Supabase session".
+// Kept separate from network/authorization errors so the UI can send the user
+// back to the Founder sign-in page instead of blaming the backend.
+export const SESSION_REQUIRED = 'session_required'
+
+function sessionRequiredError() {
+  const error = new Error('Your Founder Console session has ended. Please sign in again.')
+  error.code = SESSION_REQUIRED
+  return error
+}
+
 function friendly(error) {
   const raw = String(error?.message || '')
-  if (raw.includes('Failed to send a request') || raw.includes('FunctionsFetchError') || raw.includes('Failed to fetch')) {
-    return new Error('Founder Console backend is not reachable. Deploy the supabase/functions functions first.')
+  if (
+    raw.includes('Failed to send a request') ||
+    raw.includes('FunctionsFetchError') ||
+    raw.includes('Failed to fetch')
+  ) {
+    return new Error('Founder Console backend is not reachable. Check your connection and try again.')
   }
   if (raw.includes('non-2xx')) return new Error('Founder Console request was rejected. Check your access.')
   return new Error(raw || 'Something went wrong. Please try again.')
 }
 
-async function invoke(fn, body) {
-  if (!supabase) return { data: null, error: new Error('Supabase is not configured.') }
-  const { data, error } = await supabase.functions.invoke(fn, { body })
-  if (error) {
+async function readSession() {
+  if (!supabase) return null
+  const { data, error } = await supabase.auth.getSession()
+  if (error) return null
+  return data?.session || null
+}
+
+async function refreshSession() {
+  if (!supabase) return null
+  const { data, error } = await supabase.auth.refreshSession()
+  if (error) return null
+  return data?.session || null
+}
+
+async function readFunctionError(error) {
+  const context = error?.context
+  if (context && typeof context.json === 'function') {
     try {
-      const payload = await error.context?.json?.()
-      if (payload?.error) return { data: null, error: new Error(payload.error) }
+      const payload = await context.json()
+      if (payload?.error) return String(payload.error)
+      if (payload?.message) return String(payload.message)
     } catch {
       /* fall through */
     }
+  }
+  return ''
+}
+
+function isAuthFailure(message) {
+  return /not signed in|invalid jwt|jwt expired|unauthorized|missing authorization/i.test(String(message || ''))
+}
+
+function normalize(message) {
+  if (isAuthFailure(message)) return sessionRequiredError()
+  return new Error(message)
+}
+
+// Invokes a Founder Console edge function with an explicit bearer token.
+// supabase-js omits the Authorization header when no session exists, so being
+// explicit lets us detect an ended session instead of receiving a 401 from the
+// function. On 401/403 we refresh once and retry, then report a session error.
+async function invoke(fn, body, { auth = true } = {}) {
+  if (!supabase) return { data: null, error: new Error('Supabase is not configured.') }
+
+  let accessToken = ''
+  if (auth) {
+    const session = await readSession()
+    if (!session?.access_token) return { data: null, error: sessionRequiredError() }
+    accessToken = session.access_token
+  }
+
+  const call = (token) =>
+    supabase.functions.invoke(fn, {
+      body,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
+
+  let { data, error } = await call(accessToken)
+
+  const status = Number(error?.context?.status || 0)
+  if (auth && error && (status === 401 || status === 403)) {
+    const refreshed = await refreshSession()
+    if (!refreshed?.access_token) return { data: null, error: sessionRequiredError() }
+    accessToken = refreshed.access_token
+    ;({ data, error } = await call(accessToken))
+  }
+
+  if (error) {
+    const message = await readFunctionError(error)
+    if (message) return { data: null, error: normalize(message) }
     return { data: null, error: friendly(error) }
   }
-  if (data?.error) return { data: null, error: new Error(data.error) }
+
+  if (data?.error) return { data: null, error: normalize(data.error) }
   return { data, error: null }
 }
 
@@ -29,10 +105,9 @@ export function platformAdminCall(action, payload = {}) {
   return invoke('platform-admin', { action, ...payload })
 }
 
-// Server-side founder login: username + password only. Returns a session that
-// the caller installs with supabase.auth.setSession().
+// The founder has no session yet, so this call must NOT require one.
 export function founderLogin(username, password) {
-  return invoke('platform-admin-auth', { username, password })
+  return invoke('platform-admin-auth', { username, password }, { auth: false })
 }
 
 export function whoami() {
@@ -63,8 +138,27 @@ export function changePlatformAdminPassword({ currentPassword = '', newPassword,
   })
 }
 
+// Installs a session returned by the backend. Returns the installed session so
+// callers can confirm persistence before navigating.
+export async function installSession(session) {
+  if (!supabase) return { session: null, error: new Error('Supabase is not configured.') }
+  if (!session?.access_token || !session?.refresh_token) {
+    return { session: null, error: sessionRequiredError() }
+  }
+  const { data, error } = await supabase.auth.setSession({
+    access_token: session.access_token,
+    refresh_token: session.refresh_token,
+  })
+  if (error) return { session: null, error: sessionRequiredError() }
+  const stored = await readSession()
+  if (!stored?.access_token) return { session: null, error: sessionRequiredError() }
+  return { session: data.session || stored, error: null }
+}
+
 async function rpc(fn, args) {
   if (!supabase) return { data: null, error: new Error('Supabase is not configured.') }
+  const session = await readSession()
+  if (!session?.access_token) return { data: null, error: sessionRequiredError() }
   const { data, error } = await supabase.rpc(fn, args)
   return { data, error: error ? friendly(error) : null }
 }

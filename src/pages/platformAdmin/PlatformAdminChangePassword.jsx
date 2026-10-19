@@ -7,7 +7,9 @@ import PasswordInput from '../../components/PasswordInput'
 import { useAuth } from '../../hooks/useAuth'
 import { usePlatformAdmin } from '../../hooks/usePlatformAdmin'
 import { FOUNDER_HOME_PATH, validateNewFounderPassword } from '../../../supabase/functions/_shared/founder-gate.js'
-import { changePlatformAdminPassword } from '../../services/platformAdmin'
+import { changePlatformAdminPassword, installSession } from '../../services/platformAdmin'
+
+const SIGN_IN_AGAIN = 'Your session ended after the password change. Please sign in with your new password.'
 
 export default function PlatformAdminChangePassword() {
   const navigate = useNavigate()
@@ -18,6 +20,11 @@ export default function PlatformAdminChangePassword() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
+  async function handleSignOut(message = '') {
+    await signOut()
+    navigate('/platform-admin/login', { replace: true, state: message ? { notice: message } : undefined })
+  }
+
   async function onSubmit(event) {
     event.preventDefault()
     const validation = validateNewFounderPassword(newPassword, confirmPassword)
@@ -27,21 +34,36 @@ export default function PlatformAdminChangePassword() {
     }
     setBusy(true)
     setError('')
-    const { error: nextError } = await changePlatformAdminPassword({ newPassword, confirmPassword })
+    const { data, error: nextError } = await changePlatformAdminPassword({
+      newPassword,
+      confirmPassword,
+    })
     if (nextError) {
       setBusy(false)
       setError(nextError.message)
       return
     }
+
+    // The password change revokes the old session's refresh token, so the
+    // backend returns a fresh session. Install it before navigating; the
+    // redirect and any reload must find an authenticated session.
+    if (data?.session) {
+      const { session, error: sessionError } = await installSession(data.session)
+      if (sessionError || !session) {
+        setBusy(false)
+        await handleSignOut(SIGN_IN_AGAIN)
+        return
+      }
+    } else {
+      setBusy(false)
+      await handleSignOut(SIGN_IN_AGAIN)
+      return
+    }
+
     // Refresh the server-verified gate state before entering the console.
     await verify()
     setBusy(false)
     navigate(FOUNDER_HOME_PATH, { replace: true })
-  }
-
-  async function handleSignOut() {
-    await signOut()
-    navigate('/platform-admin/login', { replace: true })
   }
 
   return (
@@ -58,26 +80,21 @@ export default function PlatformAdminChangePassword() {
             </p>
           </div>
           <Alert>{error}</Alert>
-          <Field label="New password" hint="At least 10 characters, using three of: lowercase, uppercase, numbers, symbols.">
-            <PasswordInput
-              value={newPassword}
-              onChange={setNewPassword}
-              autoComplete="new-password"
-            />
+          <Field
+            label="New password"
+            hint="At least 10 characters, using three of: lowercase, uppercase, numbers, symbols."
+          >
+            <PasswordInput value={newPassword} onChange={setNewPassword} autoComplete="new-password" />
           </Field>
           <Field label="Confirm new password">
-            <PasswordInput
-              value={confirmPassword}
-              onChange={setConfirmPassword}
-              autoComplete="new-password"
-            />
+            <PasswordInput value={confirmPassword} onChange={setConfirmPassword} autoComplete="new-password" />
           </Field>
           <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700" disabled={busy}>
             {busy ? 'Updating...' : 'Update password and continue'}
           </Button>
         </form>
         <p className="mt-4 text-center text-sm text-slate-400">
-          <button type="button" onClick={handleSignOut} className="underline hover:text-slate-200">
+          <button type="button" onClick={() => handleSignOut()} className="underline hover:text-slate-200">
             Sign out
           </button>
         </p>

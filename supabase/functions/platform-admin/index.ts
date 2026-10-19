@@ -280,8 +280,32 @@ Deno.serve(async (req) => {
         )
       }
 
+      // A password change through the Admin API revokes every existing refresh
+      // token, which would leave this browser unable to refresh its session.
+      // Mint a fresh session with the new password so the client can continue
+      // without a re-login. The password is used once, in memory only; it is
+      // never stored, logged or returned.
+      let freshSession: { access_token: string; refresh_token: string } | null = null
+      try {
+        const authClient = createClient(supabaseUrl, anonKey, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        })
+        const { data: signedIn } = await authClient.auth.signInWithPassword({
+          email: actor.email,
+          password: newPassword,
+        })
+        if (signedIn?.session?.access_token) {
+          freshSession = {
+            access_token: signedIn.session.access_token,
+            refresh_token: signedIn.session.refresh_token,
+          }
+        }
+      } catch {
+        freshSession = null
+      }
+
       await audit('change_password', null, { forced: mustChange })
-      return json({ ok: true, must_change_password: false })
+      return json({ ok: true, must_change_password: false, session: freshSession })
     }
 
     if (action === 'overview') {

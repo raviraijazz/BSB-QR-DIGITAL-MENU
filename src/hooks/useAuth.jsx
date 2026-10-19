@@ -18,28 +18,50 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let active = true
+    let generation = 0
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      const nextSession = data.session ?? null
+    // Always resolves the loading state, even when session restoration fails,
+    // so the UI never hangs on a blank/loading screen.
+    async function applySession(nextSession) {
+      const gen = ++generation
       const nextUser = nextSession?.user ?? null
-      const nextProfile = await loadProfile(nextUser)
-      if (!active) return
-      setSession(nextSession)
-      setUser(nextUser)
+      if (active && gen === generation) {
+        setSession(nextSession ?? null)
+        setUser(nextUser)
+        setProfileReady(false)
+      }
+      let nextProfile = null
+      try {
+        nextProfile = await loadProfile(nextUser)
+      } catch {
+        nextProfile = null
+      }
+      if (!active || gen !== generation) return
       setProfile(nextProfile)
       setProfileReady(true)
-    })
+    }
+
+    function failSession() {
+      if (!active) return
+      setSession(null)
+      setUser(null)
+      setProfile(null)
+      setProfileReady(true)
+    }
+
+    supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (error) {
+          failSession()
+          return
+        }
+        applySession(data.session ?? null)
+      })
+      .catch(failSession)
 
     const { data } = supabase.auth.onAuthStateChange((_event, next) => {
-      const nextUser = next?.user ?? null
-      setSession(next)
-      setUser(nextUser)
-      setProfileReady(false)
-      loadProfile(nextUser).then((row) => {
-        if (!active) return
-        setProfile(row)
-        setProfileReady(true)
-      })
+      applySession(next ?? null)
     })
 
     return () => {

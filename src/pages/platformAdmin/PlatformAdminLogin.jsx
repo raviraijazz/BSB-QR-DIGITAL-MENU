@@ -1,31 +1,41 @@
 import { useEffect, useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import Alert from '../../components/Alert'
 import Button from '../../components/Button'
-import Field, { inputClass } from '../../components/Field'
+import Field from '../../components/Field'
 import PasswordInput from '../../components/PasswordInput'
 import { useAuth } from '../../hooks/useAuth'
 import { usePlatformAdmin } from '../../hooks/usePlatformAdmin'
 import { validateFounderLogin } from '../../lib/auth'
 import { PLATFORM_ADMIN_HOME } from '../../lib/platformAdmin'
 import { FOUNDER_MUST_CHANGE_PATH } from '../../../supabase/functions/_shared/founder-gate.js'
-import { supabase } from '../../lib/supabase'
-import { founderLogin } from '../../services/platformAdmin'
+import { founderLogin, installSession } from '../../services/platformAdmin'
 
 const NOT_AUTHORIZED = 'You are not authorized to access the Platform Admin Panel.'
 
 export default function PlatformAdminLogin() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const location = useLocation()
+  const { user, loading: authLoading } = useAuth()
   const { isAdmin, mustChangePassword, checked, checking, verify } = usePlatformAdmin()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const notice = typeof location.state?.notice === 'string' ? location.state.notice : ''
 
   useEffect(() => {
     if (user && !checked && !checking) verify()
   }, [user, checked, checking, verify])
+
+  // Do not redirect until session restoration has finished.
+  if (authLoading) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-slate-900 px-4">
+        <p className="text-sm text-slate-300">Restoring session...</p>
+      </div>
+    )
+  }
 
   if (user && checked && isAdmin) {
     return <Navigate to={mustChangePassword ? FOUNDER_MUST_CHANGE_PATH : PLATFORM_ADMIN_HOME} replace />
@@ -48,17 +58,19 @@ export default function PlatformAdminLogin() {
       setError(loginError.message || 'Invalid username or password')
       return
     }
-    const { error: sessionError } = await supabase.auth.setSession({
-      access_token: data.session.access_token,
-      refresh_token: data.session.refresh_token,
-    })
-    if (sessionError) {
+
+    // Install and confirm persistence BEFORE navigating, so the next page and
+    // any reload see the authenticated session.
+    const { session, error: sessionError } = await installSession(data?.session)
+    if (sessionError || !session) {
       setBusy(false)
       setError(NOT_AUTHORIZED)
       return
     }
-    // A freshly provisioned founder must rotate the temporary password before
-    // any privileged page or API is available.
+
+    setPassword('')
+    setBusy(false)
+
     const mustChange = Boolean(data?.user?.must_change_password)
     navigate(mustChange ? FOUNDER_MUST_CHANGE_PATH : PLATFORM_ADMIN_HOME, { replace: true })
   }
@@ -74,9 +86,10 @@ export default function PlatformAdminLogin() {
             <p className="mt-1 text-sm text-slate-500">Authorized founder access only.</p>
           </div>
           <Alert>{error}</Alert>
+          <Alert type="success">{notice}</Alert>
           <Field label="Username">
             <input
-              className={inputClass}
+              className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink placeholder:text-stone-400"
               autoComplete="username"
               autoCapitalize="none"
               value={username}
