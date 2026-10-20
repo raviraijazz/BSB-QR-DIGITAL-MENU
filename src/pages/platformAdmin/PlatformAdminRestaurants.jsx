@@ -114,11 +114,12 @@ export default function PlatformAdminRestaurants() {
       ) : (
         <>
           <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <table className="w-full min-w-[1000px] text-left text-sm">
+            <table className="w-full min-w-[1100px] text-left text-sm">
               <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-5 py-3 font-medium">Restaurant</th>
                   <th className="px-5 py-3 font-medium">Owner</th>
+                  <th className="px-5 py-3 font-medium">Plan</th>
                   <th className="px-5 py-3 font-medium">Access</th>
                   <th className="px-5 py-3 font-medium">Validity</th>
                   <th className="px-5 py-3 font-medium">Counts</th>
@@ -142,6 +143,7 @@ export default function PlatformAdminRestaurants() {
                         </span>
                       ) : null}
                     </td>
+                    <td className="px-5 py-3 text-slate-600">{row.plan_name || 'None'}</td>
                     <td className="px-5 py-3">
                       <StatusBadge status={row.status} />
                     </td>
@@ -174,6 +176,12 @@ export default function PlatformAdminRestaurants() {
                           className="rounded-lg border border-slate-200 px-3 py-1.5 text-center text-xs font-medium text-slate-700 hover:bg-slate-50"
                         >
                           Import Menu
+                        </Link>
+                        <Link
+                          to={`/platform-admin/subscriptions?restaurant=${row.id}`}
+                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-center text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          Assign Plan
                         </Link>
                       </div>
                     </td>

@@ -2,6 +2,7 @@ export const PLATFORM_ADMIN_LOGIN = '/platform-admin/login'
 export const PLATFORM_ADMIN_HOME = '/platform-admin'
 export const PLATFORM_ADMIN_RESTAURANTS = '/platform-admin/restaurants'
 export const PLATFORM_ADMIN_IMPORT = '/platform-admin/import-menu'
+export const PLATFORM_ADMIN_SUBSCRIPTIONS = '/platform-admin/subscriptions'
 export const PLATFORM_ADMIN_AUDIT = '/platform-admin/audit'
 export const PLATFORM_ADMIN_ACCOUNT = '/platform-admin/account'
 
@@ -17,7 +18,7 @@ export const PLATFORM_NAV = [
       { to: PLATFORM_ADMIN_IMPORT, label: 'Import Menu', icon: 'menu' },
       { to: PLATFORM_ADMIN_AUDIT, label: 'Audit Trail', icon: 'history' },
       { label: 'Add Restaurant', icon: 'plus', planned: true },
-      { label: 'Subscription & Plans', icon: 'collections', planned: true },
+      { to: PLATFORM_ADMIN_SUBSCRIPTIONS, label: 'Subscription & Plans', icon: 'collections' },
     ],
   },
   {

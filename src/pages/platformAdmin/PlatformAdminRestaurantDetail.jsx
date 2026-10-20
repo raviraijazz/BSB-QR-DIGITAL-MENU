@@ -175,6 +175,7 @@ export default function PlatformAdminRestaurantDetail() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Owner" value={restaurant.owner_username || owner?.username || '—'} />
+        <Stat label="Plan" value={restaurant.plan_name || 'None'} />
         <Stat label="Validity until" value={restaurant.valid_until ? formatDate(restaurant.valid_until) : 'No expiry'} />
         <Stat label="Tables" value={formatCount(restaurant.table_count)} />
         <Stat label="Menu items" value={formatCount(restaurant.menu_item_count)} />
@@ -234,7 +235,7 @@ export default function PlatformAdminRestaurantDetail() {
             </button>
           </div>
         </div>
-        <div className="mt-4">
+        <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => navigate(`/platform-admin/support/${restaurantId}`)}
@@ -242,6 +243,12 @@ export default function PlatformAdminRestaurantDetail() {
           >
             Login to Panel
           </button>
+          <Link
+            to={`/platform-admin/subscriptions?restaurant=${restaurantId}`}
+            className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Assign / Update plan
+          </Link>
         </div>
       </div>
 

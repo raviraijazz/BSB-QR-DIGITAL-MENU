@@ -46,6 +46,7 @@ const PlatformAdminRestaurants = lazy(() => import('./pages/platformAdmin/Platfo
 const PlatformAdminRestaurantDetail = lazy(() => import('./pages/platformAdmin/PlatformAdminRestaurantDetail'))
 const PlatformAdminAccount = lazy(() => import('./pages/platformAdmin/PlatformAdminAccount'))
 const PlatformAdminImportMenu = lazy(() => import('./pages/platformAdmin/PlatformAdminImportMenu'))
+const PlatformAdminSubscriptions = lazy(() => import('./pages/platformAdmin/PlatformAdminSubscriptions'))
 const PlatformAdminAudit = lazy(() => import('./pages/platformAdmin/PlatformAdminAudit'))
 const PlatformAdminPlanned = lazy(() => import('./pages/platformAdmin/PlatformAdminPlanned'))
 const SupportOverview = lazy(() => import('./pages/dashboard/Overview'))
@@ -77,6 +78,7 @@ export default function App() {
                   <Route path="restaurants" element={<PlatformAdminRestaurants />} />
                   <Route path="restaurants/:restaurantId" element={<PlatformAdminRestaurantDetail />} />
                   <Route path="import-menu" element={<PlatformAdminImportMenu />} />
+                  <Route path="subscriptions" element={<PlatformAdminSubscriptions />} />
                   <Route path="audit" element={<PlatformAdminAudit />} />
                   <Route path="account" element={<PlatformAdminAccount />} />
                   <Route path="*" element={<PlatformAdminPlanned />} />

@@ -23,6 +23,12 @@ const ACTION_LABELS = {
   waiter_block: 'Waiter blocked',
   waiter_unblock: 'Waiter unblocked',
   menu_import: 'Menu imported',
+  plan_create: 'Plan created',
+  plan_update: 'Plan updated',
+  plan_status: 'Plan status changed',
+  subscription_assign: 'Subscription assigned',
+  subscription_switch: 'Subscription switched',
+  subscription_settings: 'Default subscription settings updated',
   change_password: 'Password changed',
   view_restaurant: 'Restaurant viewed',
 }

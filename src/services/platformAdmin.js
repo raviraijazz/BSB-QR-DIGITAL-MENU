@@ -199,3 +199,45 @@ export function importMenu(restaurantId, rows) {
 export function listAudit({ limit = 50, offset = 0 } = {}) {
   return rpc('platform_list_audit', { p_limit: limit, p_offset: offset })
 }
+
+export function listSubscriptionPlans(includeArchived = false) {
+  return rpc('platform_list_plans', { p_include_archived: includeArchived })
+}
+
+export function upsertSubscriptionPlan(plan) {
+  return rpc('platform_upsert_plan', {
+    p_id: plan.id || null,
+    p_name: plan.name,
+    p_description: plan.description || '',
+    p_price_inr: Number(plan.price_inr),
+    p_billing_cycle: plan.billing_cycle,
+    p_custom_cycle_days: plan.billing_cycle === 'custom' ? Number(plan.custom_cycle_days) : null,
+    p_features: Array.isArray(plan.features) ? plan.features : [],
+    p_max_waiters: plan.max_waiters === '' || plan.max_waiters == null ? null : Number(plan.max_waiters),
+    p_status: plan.status || 'active',
+  })
+}
+
+export function setSubscriptionPlanStatus(planId, status) {
+  return rpc('platform_set_plan_status', { p_id: planId, p_status: status })
+}
+
+export function getSubscriptionSettings() {
+  return rpc('platform_get_subscription_settings')
+}
+
+export function setSubscriptionSettings({ planId, durationDays, enabled }) {
+  return rpc('platform_set_subscription_settings', {
+    p_default_plan_id: planId || null,
+    p_default_duration_days: Number(durationDays),
+    p_auto_assign_enabled: Boolean(enabled),
+  })
+}
+
+export function assignSubscription(payload) {
+  return rpc('platform_assign_subscription', payload)
+}
+
+export function listSubscriptionAssignments(restaurantId) {
+  return rpc('platform_list_assignments', { p_restaurant_id: restaurantId })
+}
