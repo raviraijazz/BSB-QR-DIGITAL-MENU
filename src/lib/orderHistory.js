@@ -304,7 +304,11 @@ export function pageNumbers(page, pages) {
 }
 
 export function itemVariant(item) {
-  return String(item?.description || '').trim()
+  const stored = String(item?.variant_name || item?.variant || '').trim()
+  if (stored) return stored
+  const name = String(item?.item_name || '').trim()
+  const match = name.match(/\(([^)]+)\)\s*$/)
+  return match ? match[1].trim() : ''
 }
 
 export function itemCount(order) {

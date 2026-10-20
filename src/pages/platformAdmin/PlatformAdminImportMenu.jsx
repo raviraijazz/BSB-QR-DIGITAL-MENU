@@ -4,21 +4,21 @@ import Alert from '../../components/Alert'
 import Button from '../../components/Button'
 import { fetchSheet, importMenu, listPlatformRestaurants } from '../../services/platformAdmin'
 import {
+  SAMPLE_SHEET_URL,
   buildRows,
+  formatVariantsPreview,
   guessMapping,
   IMPORT_FIELDS,
   parseCsvText,
+  resolveVariantColumns,
   summarizeImport,
 } from '../../lib/menuImport'
-
-const SAMPLE_URL =
-  'https://docs.google.com/spreadsheets/d/1RTpREaNsEvUU-lvJGDfV2U7kJO6bytdjMFI6b9AiMBY/edit?usp=sharing'
 
 export default function PlatformAdminImportMenu() {
   const [searchParams] = useSearchParams()
   const [restaurants, setRestaurants] = useState([])
   const [restaurantId, setRestaurantId] = useState(searchParams.get('restaurant') || '')
-  const [url, setUrl] = useState('')
+  const [url, setUrl] = useState(SAMPLE_SHEET_URL)
   const [grid, setGrid] = useState(null)
   const [headerRow, setHeaderRow] = useState(0)
   const [mapping, setMapping] = useState({})
@@ -113,8 +113,8 @@ export default function PlatformAdminImportMenu() {
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Import Menu</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Founder-only. Load a Google Sheet or CSV, map columns, review validation, then import into an existing
-          restaurant. Existing menu items are never deleted.
+          Founder-only. Load a Google Sheet or CSV, map columns (including Quarter / Half / Full), review the
+          preview, then import into an existing restaurant. Existing menu items are never deleted or overwritten.
         </p>
       </div>
 
@@ -158,7 +158,7 @@ export default function PlatformAdminImportMenu() {
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
-            onClick={() => setUrl(SAMPLE_URL)}
+            onClick={() => setUrl(SAMPLE_SHEET_URL)}
             className="text-xs text-blue-700 hover:underline"
           >
             Use the sample sheet URL
@@ -219,6 +219,46 @@ export default function PlatformAdminImportMenu() {
                 </label>
               ))}
             </div>
+            {headers.length ? (
+              <fieldset className="mt-4">
+                <legend className="text-xs font-medium text-slate-500">Size / variant price columns</legend>
+                <p className="mt-1 text-xs text-slate-400">
+                  Tick extra columns such as Quarter, Half, Full. Veg / Non-veg is never treated as a size.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {headers.map((h, i) => {
+                    const used = IMPORT_FIELDS.some((field) => mapping[field.key] === i)
+                    if (used) return null
+                    const checked = Array.isArray(mapping.variantColumns)
+                      ? mapping.variantColumns.includes(i)
+                      : resolveVariantColumns(headers, mapping).some((col) => col.index === i)
+                    return (
+                      <label
+                        key={i}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            setMapping((m) => {
+                              const current = Array.isArray(m.variantColumns)
+                                ? m.variantColumns.slice()
+                                : resolveVariantColumns(headers, m).map((col) => col.index)
+                              const next = current.includes(i)
+                                ? current.filter((idx) => idx !== i)
+                                : [...current, i]
+                              return { ...m, variantColumns: next }
+                            })
+                          }}
+                        />
+                        {h || `Column ${i + 1}`}
+                      </label>
+                    )
+                  })}
+                </div>
+              </fieldset>
+            ) : null}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
@@ -257,7 +297,7 @@ export default function PlatformAdminImportMenu() {
                   <th className="px-4 py-3 font-medium">Row</th>
                   <th className="px-4 py-3 font-medium">Category</th>
                   <th className="px-4 py-3 font-medium">Item</th>
-                  <th className="px-4 py-3 font-medium">Price</th>
+                  <th className="px-4 py-3 font-medium">Price / variants</th>
                   <th className="px-4 py-3 font-medium">Type</th>
                   <th className="px-4 py-3 font-medium">Available</th>
                 </tr>
@@ -268,7 +308,7 @@ export default function PlatformAdminImportMenu() {
                     <td className="px-4 py-2 text-slate-400">{row.rowNumber}</td>
                     <td className="px-4 py-2 text-slate-600">{row.category}</td>
                     <td className="px-4 py-2 font-medium text-slate-800">{row.name}</td>
-                    <td className="px-4 py-2 text-slate-600">{row.price}</td>
+                    <td className="px-4 py-2 text-slate-600">{formatVariantsPreview(row)}</td>
                     <td className="px-4 py-2 text-slate-600">{row.food_type === 'non_veg' ? 'Non-veg' : 'Veg'}</td>
                     <td className="px-4 py-2 text-slate-600">{row.is_available ? 'Yes' : 'No'}</td>
                   </tr>

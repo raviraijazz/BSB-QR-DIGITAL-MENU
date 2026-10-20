@@ -98,12 +98,30 @@ function resolveServiceKey() {
 }
 
 function toSheetCsvUrl(url: string): string | null {
-  if (/export\?format=csv/i.test(url)) return url
+  if (/export\?format=csv/i.test(url) || /tqx=out:csv/i.test(url)) return url
   const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
   if (!match) return null
   const gidMatch = url.match(/[#&?]gid=([0-9]+)/)
   const gid = gidMatch ? gidMatch[1] : '0'
   return `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv&gid=${gid}`
+}
+
+function sheetCsvCandidates(url: string): string[] {
+  const exportUrl = toSheetCsvUrl(url)
+  if (!exportUrl) return []
+  const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+  const gidMatch = url.match(/[#&?]gid=([0-9]+)/)
+  const gid = gidMatch ? gidMatch[1] : '0'
+  const urls = [exportUrl]
+  if (match?.[1] && !/tqx=out:csv/i.test(exportUrl)) {
+    urls.push(`https://docs.google.com/spreadsheets/d/${match[1]}/gviz/tq?tqx=out:csv&gid=${gid}`)
+  }
+  return [...new Set(urls)]
+}
+
+function looksLikeHtml(text: string) {
+  const head = String(text || '').trim().slice(0, 200).toLowerCase()
+  return head.startsWith('<!doctype') || head.startsWith('<html') || head.includes('<head')
 }
 
 function parseCsv(text: string): string[][] {
@@ -401,21 +419,40 @@ Deno.serve(async (req) => {
       if (!allowedHost) {
         return json({ error: 'Only Google Sheets URLs are supported for direct fetch. Upload a CSV file instead.' }, 400)
       }
-      const exportUrl = toSheetCsvUrl(url)
-      if (!exportUrl) return json({ error: 'Could not build a CSV export URL from that link.' }, 400)
-      let text = ''
-      try {
-        const controller = new AbortController()
-        const timer = setTimeout(() => controller.abort(), 15000)
-        const res = await fetch(exportUrl, { signal: controller.signal, redirect: 'follow' })
-        clearTimeout(timer)
-        if (!res.ok) return json({ error: `Sheet fetch failed (HTTP ${res.status}). Is it shared publicly?` }, 400)
-        text = await res.text()
-      } catch {
-        return json({ error: 'Could not reach the sheet. Ensure it is shared publicly or upload a CSV file.' }, 400)
+      const candidates = sheetCsvCandidates(url)
+      if (!candidates.length) return json({ error: 'Could not build a CSV export URL from that link.' }, 400)
+      let rows: string[][] = []
+      let lastStatus = 0
+      let sawHtml = false
+      for (const exportUrl of candidates) {
+        try {
+          const controller = new AbortController()
+          const timer = setTimeout(() => controller.abort(), 15000)
+          const res = await fetch(exportUrl, { signal: controller.signal, redirect: 'follow' })
+          clearTimeout(timer)
+          lastStatus = res.status
+          if (!res.ok) continue
+          const text = await res.text()
+          if (!String(text || '').trim()) continue
+          if (looksLikeHtml(text)) {
+            sawHtml = true
+            continue
+          }
+          rows = parseCsv(text)
+          if (rows.length) break
+        } catch {
+          // try the next CSV export URL
+        }
       }
-      const rows = parseCsv(text)
-      if (!rows.length) return json({ error: 'The sheet appears to be empty.' }, 400)
+      if (!rows.length) {
+        if (sawHtml || lastStatus === 401 || lastStatus === 403) {
+          return json({ error: 'The sheet is not publicly readable. Share it to anyone with the link, or upload a CSV export.' }, 400)
+        }
+        if (lastStatus && lastStatus !== 200) {
+          return json({ error: `Sheet fetch failed (HTTP ${lastStatus}). Is it shared publicly?` }, 400)
+        }
+        return json({ error: 'The sheet appears to be empty. Upload a CSV export if it is private.' }, 400)
+      }
       return json({ rows })
     }
 

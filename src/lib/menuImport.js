@@ -1,15 +1,77 @@
 // Pure helpers for founder-only menu import. No Supabase imports so they can be
 // unit tested with plain node.
 
+export const SAMPLE_SHEET_URL =
+  'https://docs.google.com/spreadsheets/d/1RTpREaNsEvUU-lvJGDfV2U7kJO6bytdjMFI6b9AiMBY/edit?pli=1&gid=0#gid=0'
+
 export const IMPORT_FIELDS = [
   { key: 'name', label: 'Item name', required: true },
   { key: 'category', label: 'Category', required: true },
-  { key: 'price', label: 'Price', required: true },
+  { key: 'price', label: 'Price', required: false },
+  { key: 'variant', label: 'Variant name', required: false },
   { key: 'description', label: 'Description', required: false },
   { key: 'food_type', label: 'Veg / Non-veg', required: false },
   { key: 'is_available', label: 'Available', required: false },
   { key: 'image_url', label: 'Image URL', required: false },
 ]
+
+const HEADER_HINTS = {
+  name: ['name', 'item', 'item name', 'dish', 'product', 'title'],
+  category: ['category', 'cat', 'section', 'group'],
+  price: ['price', 'rate', 'amount', 'mrp', 'cost'],
+  variant: ['variant', 'size', 'portion', 'serving', 'variant name'],
+  description: ['description', 'desc', 'details', 'about'],
+  food_type: ['food type', 'food_type', 'type', 'veg/non-veg', 'veg / non-veg', 'foodtype'],
+  is_available: ['available', 'availability', 'is_available', 'in stock', 'status'],
+  image_url: ['image', 'image url', 'image_url', 'photo', 'img'],
+}
+
+const SIZE_ALIASES = new Map([
+  ['quarter', 'Quarter'],
+  ['qtr', 'Quarter'],
+  ['1/4', 'Quarter'],
+  ['1/4th', 'Quarter'],
+  ['half', 'Half'],
+  ['1/2', 'Half'],
+  ['1/2th', 'Half'],
+  ['full', 'Full'],
+  ['small', 'Small'],
+  ['sm', 'Small'],
+  ['medium', 'Medium'],
+  ['med', 'Medium'],
+  ['large', 'Large'],
+  ['lg', 'Large'],
+  ['regular', 'Regular'],
+  ['reg', 'Regular'],
+  ['family', 'Family'],
+  ['jumbo', 'Jumbo'],
+  ['king', 'King'],
+  ['single', 'Single'],
+  ['double', 'Double'],
+  ['pint', 'Pint'],
+  ['glass', 'Glass'],
+  ['bottle', 'Bottle'],
+  ['plate', 'Plate'],
+  ['piece', 'Piece'],
+  ['pc', 'Piece'],
+  ['pcs', 'Piece'],
+])
+
+const FOOD_TYPE_HEADERS = new Set([
+  'veg',
+  'non veg',
+  'non-veg',
+  'nonveg',
+  'veg/non-veg',
+  'veg / non-veg',
+  'veg/non veg',
+  'food type',
+  'food_type',
+  'foodtype',
+  'type',
+])
+
+const INVALID_PRICE_WORDS = new Set(['free', 'n/a', 'na', 'nil', 'none', '-', '—', 'call', 'ask', 'tbd'])
 
 export function parseCsvText(text) {
   const rows = []
@@ -51,47 +113,117 @@ export function parseCsvText(text) {
   return rows.filter((r) => r.some((cell) => String(cell).trim() !== ''))
 }
 
-const HEADER_HINTS = {
-  name: ['name', 'item', 'item name', 'dish', 'product', 'title'],
-  category: ['category', 'cat', 'section', 'group'],
-  price: ['price', 'rate', 'amount', 'mrp', 'cost'],
-  description: ['description', 'desc', 'details', 'about'],
-  food_type: ['food type', 'food_type', 'type', 'veg', 'veg/non-veg', 'foodtype'],
-  is_available: ['available', 'availability', 'is_available', 'in stock', 'status'],
-  image_url: ['image', 'image url', 'image_url', 'photo', 'img'],
+export function normalizeHeader(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+}
+
+export function sizeNameFromHeader(value) {
+  const normalized = normalizeHeader(value)
+  if (!normalized || FOOD_TYPE_HEADERS.has(normalized)) return ''
+  if (SIZE_ALIASES.has(normalized)) return SIZE_ALIASES.get(normalized)
+  for (const [alias, name] of SIZE_ALIASES) {
+    if (normalized === `${alias} price` || normalized === `price ${alias}` || normalized === `${alias} (rs)`) {
+      return name
+    }
+  }
+  return ''
+}
+
+function reservedIndexes(mapping) {
+  const reserved = new Set()
+  for (const field of IMPORT_FIELDS) {
+    const idx = mapping?.[field.key]
+    if (Number.isInteger(idx) && idx >= 0) reserved.add(idx)
+  }
+  return reserved
+}
+
+export function detectVariantColumns(headers, mapping = {}) {
+  const reserved = reservedIndexes(mapping)
+  const cols = []
+  const seen = new Set()
+  ;(headers || []).forEach((header, index) => {
+    if (reserved.has(index)) return
+    const name = sizeNameFromHeader(header)
+    if (!name || seen.has(name.toLowerCase())) return
+    seen.add(name.toLowerCase())
+    cols.push({ index, name })
+  })
+  return cols
+}
+
+export function resolveVariantColumns(headers, mapping = {}) {
+  if (Array.isArray(mapping.variantColumns)) {
+    const reserved = reservedIndexes(mapping)
+    const seen = new Set()
+    const cols = []
+    for (const raw of mapping.variantColumns) {
+      const index = Number(raw)
+      if (!Number.isInteger(index) || index < 0 || reserved.has(index) || seen.has(index)) continue
+      seen.add(index)
+      const header = headers?.[index]
+      const name = sizeNameFromHeader(header) || String(header || '').trim() || `Column ${index + 1}`
+      cols.push({ index, name })
+    }
+    return cols
+  }
+  return detectVariantColumns(headers, mapping)
+}
+
+function findHeaderIndex(lowered, hints, used) {
+  for (const hint of hints) {
+    const idx = lowered.findIndex((h, i) => !used.has(i) && h === hint)
+    if (idx !== -1) return idx
+  }
+  for (const hint of hints) {
+    const idx = lowered.findIndex((h, i) => !used.has(i) && h.includes(hint) && !sizeNameFromHeader(h) && !FOOD_TYPE_HEADERS.has(h))
+    if (idx !== -1) return idx
+  }
+  return -1
 }
 
 export function guessMapping(headers) {
   const mapping = {}
-  const lowered = (headers || []).map((h) => String(h || '').trim().toLowerCase())
+  const lowered = (headers || []).map((h) => normalizeHeader(h))
+  const used = new Set()
   for (const field of IMPORT_FIELDS) {
     const hints = HEADER_HINTS[field.key] || []
     let found = -1
-    for (const hint of hints) {
-      const idx = lowered.findIndex((h) => h === hint)
-      if (idx !== -1) {
-        found = idx
-        break
+    if (field.key === 'food_type') {
+      found = findHeaderIndex(lowered, hints, used)
+      if (found === -1) {
+        found = lowered.findIndex((h, i) => !used.has(i) && (h === 'veg' || h === 'type' || h.includes('food type')))
       }
-    }
-    if (found === -1) {
+    } else if (field.key === 'price') {
       for (const hint of hints) {
-        const idx = lowered.findIndex((h) => h.includes(hint))
+        const idx = lowered.findIndex((h, i) => !used.has(i) && h === hint && !sizeNameFromHeader(headers[i]))
         if (idx !== -1) {
           found = idx
           break
         }
       }
+    } else {
+      found = findHeaderIndex(lowered, hints, used)
     }
     mapping[field.key] = found
+    if (found >= 0) used.add(found)
   }
+  mapping.variantColumns = detectVariantColumns(headers, mapping).map((col) => col.index)
   return mapping
 }
 
 function parsePrice(raw) {
-  const cleaned = String(raw ?? '').replace(/[^0-9.-]/g, '')
-  if (cleaned === '') return NaN
-  return Number(cleaned)
+  const text = String(raw ?? '').trim()
+  if (!text) return NaN
+  if (INVALID_PRICE_WORDS.has(text.toLowerCase())) return NaN
+  const cleaned = text.replace(/[^0-9.-]/g, '')
+  if (cleaned === '' || cleaned === '-' || cleaned === '.' || cleaned === '-.') return NaN
+  const n = Number(cleaned)
+  return Number.isFinite(n) ? n : NaN
 }
 
 function parseBool(raw) {
@@ -107,53 +239,187 @@ function parseFoodType(raw) {
   return 'veg'
 }
 
-// Build rows from the grid using a column mapping. Returns { rows, errors }.
+function cell(cells, index) {
+  if (index == null || index < 0) return ''
+  return String(cells[index] ?? '').trim()
+}
+
+function itemKey(category, name) {
+  return `${String(category || '').trim().toLowerCase()}::${String(name || '').trim().toLowerCase()}`
+}
+
+function variantKey(name) {
+  return String(name || '').trim().toLowerCase()
+}
+
+function toStoredVariants(collected) {
+  const named = collected.filter((row) => row.name)
+  if (named.length === 0) return []
+  return named.map((row) => ({
+    name: row.name,
+    price: row.price,
+    is_available: true,
+  }))
+}
+
+function basePrice(collected) {
+  const first = collected.find((row) => Number.isFinite(row.price) && row.price >= 0)
+  return first ? first.price : NaN
+}
+
+export function formatVariantsPreview(row) {
+  const variants = Array.isArray(row?.variants) ? row.variants : []
+  if (!variants.length) return Number.isFinite(row?.price) ? String(row.price) : ''
+  return variants.map((variant) => `${variant.name} ${variant.price}`).join(' · ')
+}
+
 export function buildRows(grid, mapping, { headerRow = 0, defaultCategory = '' } = {}) {
   const errors = []
   const rows = []
   const dataRows = (grid || []).slice(headerRow + 1)
-  const seen = new Set()
+  const headers = (grid || [])[headerRow] || []
+  const variantCols = resolveVariantColumns(headers, mapping)
+  const grouped = new Map()
+  let lastName = ''
+  let lastCategory = defaultCategory
 
   dataRows.forEach((cells, index) => {
-    const rowNumber = headerRow + index + 2 // 1-based sheet row
-    const get = (key) => {
-      const idx = mapping[key]
-      return idx == null || idx < 0 ? '' : String(cells[idx] ?? '').trim()
+    const rowNumber = headerRow + index + 2
+    const get = (key) => cell(cells, mapping[key])
+    let name = get('name')
+    let category = get('category')
+    const rawPrice = get('price')
+    const variantName = get('variant')
+    const description = get('description')
+    const foodRaw = get('food_type')
+    const availableRaw = get('is_available')
+    const imageUrl = get('image_url')
+
+    const collected = []
+    const rowErrors = []
+
+    for (const col of variantCols) {
+      const raw = cell(cells, col.index)
+      if (!raw) continue
+      const price = parsePrice(raw)
+      if (!Number.isFinite(price) || price < 0) {
+        rowErrors.push(`Invalid price for ${col.name}`)
+        continue
+      }
+      collected.push({ name: col.name, price })
     }
 
-    const name = get('name')
-    const category = get('category') || defaultCategory
-    const price = parsePrice(get('price'))
+    if (rawPrice !== '') {
+      const price = parsePrice(rawPrice)
+      if (!Number.isFinite(price) || price < 0) {
+        rowErrors.push('Invalid price')
+      } else if (variantName) {
+        collected.push({ name: variantName, price })
+      } else if (variantCols.length === 0) {
+        collected.push({ name: '', price })
+      } else if (collected.length === 0) {
+        collected.push({ name: '', price })
+      }
+    } else if (variantName && variantCols.length === 0) {
+      rowErrors.push('Invalid price')
+    }
 
-    if (!name && !category && !String(get('price'))) return // skip empty rows
+    const hasContent =
+      name ||
+      category ||
+      rawPrice ||
+      variantName ||
+      description ||
+      foodRaw ||
+      imageUrl ||
+      collected.length ||
+      rowErrors.length
+    if (!hasContent) return
 
-    const rowErrors = []
+    const continuation = !name && (Boolean(variantName) || collected.some((row) => row.name))
+    if (continuation) {
+      if (!name) name = lastName
+      if (!category) category = lastCategory || defaultCategory
+    } else if (!category) {
+      category = defaultCategory
+    }
+    if (name) lastName = name
+    if (category) lastCategory = category
+
     if (!name) rowErrors.push('Missing item name')
     if (!category) rowErrors.push('Missing category')
-    if (!Number.isFinite(price) || price < 0) rowErrors.push('Invalid price')
 
-    const key = `${category.toLowerCase()}::${name.toLowerCase()}`
-    if (name && category) {
-      if (seen.has(key)) rowErrors.push('Duplicate row in this import')
-      seen.add(key)
+    const validCollected = collected.filter((row) => Number.isFinite(row.price) && row.price >= 0)
+    if (!validCollected.length && !rowErrors.some((msg) => msg.toLowerCase().includes('price'))) {
+      rowErrors.push('Missing price')
     }
 
-    const row = {
-      rowNumber,
-      name,
-      category,
-      price: Number.isFinite(price) ? price : 0,
-      description: get('description'),
-      food_type: parseFoodType(get('food_type')),
-      is_available: parseBool(get('is_available')),
-      image_url: get('image_url') || null,
-      variants: [],
+    if (rowErrors.length) {
+      errors.push({ rowNumber, name, messages: rowErrors })
+      return
     }
 
-    if (rowErrors.length) errors.push({ rowNumber, name, messages: rowErrors })
-    else rows.push(row)
+    const key = itemKey(category, name)
+    const storedVariants = toStoredVariants(validCollected)
+    const price = basePrice(validCollected)
+    const next = grouped.get(key)
+
+    if (!next) {
+      grouped.set(key, {
+        rowNumber,
+        name,
+        category,
+        price,
+        description,
+        food_type: parseFoodType(foodRaw),
+        is_available: parseBool(availableRaw),
+        image_url: imageUrl || null,
+        variants: storedVariants,
+        seenVariants: new Map(validCollected.map((row) => [variantKey(row.name), row.price])),
+      })
+      return
+    }
+
+    for (const row of validCollected) {
+      const vKey = variantKey(row.name)
+      if (next.seenVariants.has(vKey)) {
+        if (next.seenVariants.get(vKey) === row.price) {
+          errors.push({ rowNumber, name, messages: ['Duplicate row in this import'] })
+        } else {
+          errors.push({
+            rowNumber,
+            name,
+            messages: [`Conflicting price for ${row.name || 'item'}`],
+          })
+        }
+        return
+      }
+      next.seenVariants.set(vKey, row.price)
+      if (row.name) {
+        next.variants.push({ name: row.name, price: row.price, is_available: true })
+      }
+    }
+    if (!Number.isFinite(next.price) || next.price < 0) next.price = price
+    if (!next.description && description) next.description = description
+    if (!next.image_url && imageUrl) next.image_url = imageUrl
   })
 
+  for (const row of grouped.values()) {
+    const variants = row.variants || []
+    rows.push({
+      rowNumber: row.rowNumber,
+      name: row.name,
+      category: row.category,
+      price: row.price,
+      description: row.description || '',
+      food_type: row.food_type,
+      is_available: row.is_available,
+      image_url: row.image_url,
+      variants,
+    })
+  }
+
+  rows.sort((a, b) => a.rowNumber - b.rowNumber)
   return { rows, errors }
 }
 
