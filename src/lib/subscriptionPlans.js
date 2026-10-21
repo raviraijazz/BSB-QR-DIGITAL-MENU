@@ -177,9 +177,22 @@ export function validatePlanInput(input) {
     const n = Number(waiters)
     if (!Number.isInteger(n) || n < 1 || n > 10000) return 'Waiter limit must be a whole number of 1 or more'
   }
+  const defaultDays = input?.default_duration_days
+  if (defaultDays !== '' && defaultDays != null && defaultDays !== undefined) {
+    const n = Number(defaultDays)
+    if (!Number.isInteger(n) || n < 1 || n > 3650) return 'Default validity must be between 1 and 3650 days'
+  }
   const status = String(input?.status || 'active')
   if (!['active', 'inactive'].includes(status)) return 'Select active or inactive'
   return ''
+}
+
+export function durationIdFromDays(days) {
+  const n = Number(days)
+  if (!Number.isInteger(n) || n < 1) return null
+  const match = VALIDITY_DURATION_OPTIONS.find((row) => row.kind === 'days' && row.amount === n)
+  if (match) return { id: match.id, customDays: String(n) }
+  return { id: 'custom_days', customDays: String(n) }
 }
 
 export function validateDefaultSettings({ planId, durationDays, enabled, plans }) {

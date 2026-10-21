@@ -8,6 +8,7 @@ import {
   buildAssignmentPreview,
   computeValidUntil,
   durationFromOption,
+  durationIdFromDays,
   parseDateInput,
   parseFeatureLines,
   restaurantNeedsValidity,
@@ -33,6 +34,21 @@ test('validatePlanInput accepts zero price and optional waiter limit', () => {
     validatePlanInput({ name: 'Trial', price_inr: 0, billing_cycle: 'monthly', max_waiters: 0 }),
     'Waiter limit must be a whole number of 1 or more',
   )
+  assert.equal(
+    validatePlanInput({ name: 'Trial', price_inr: 0, billing_cycle: 'yearly', default_duration_days: 365 }),
+    '',
+  )
+  assert.equal(
+    validatePlanInput({ name: 'Trial', price_inr: 0, billing_cycle: 'yearly', default_duration_days: 0 }),
+    'Default validity must be between 1 and 3650 days',
+  )
+})
+
+test('durationIdFromDays maps known presets and custom days', () => {
+  assert.deepEqual(durationIdFromDays(7), { id: 'days_7', customDays: '7' })
+  assert.deepEqual(durationIdFromDays(365), { id: 'days_365', customDays: '365' })
+  assert.deepEqual(durationIdFromDays(12), { id: 'custom_days', customDays: '12' })
+  assert.equal(durationIdFromDays(''), null)
 })
 
 test('billingCycleLabel and feature lines stay founder-defined', () => {
@@ -98,6 +114,16 @@ test('switching plans preserves existing validity unless changeValidity is on', 
   assert.equal(preserved.preview.changeValidity, false)
   assert.equal(preserved.preview.validFrom, restaurant.valid_from)
   assert.equal(preserved.preview.validUntil, restaurant.valid_until)
+
+  const withSuggestedDuration = buildAssignmentPreview({
+    restaurant,
+    plan: { ...planB, default_duration_days: 30 },
+    changeValidity: false,
+    startDate: '2026-04-01',
+    durationId: 'days_30',
+  })
+  assert.equal(withSuggestedDuration.preview.preserveExpiry, true)
+  assert.equal(withSuggestedDuration.preview.validUntil, restaurant.valid_until)
 
   const changed = buildAssignmentPreview({
     restaurant,

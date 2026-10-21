@@ -214,6 +214,10 @@ export function upsertSubscriptionPlan(plan) {
     p_custom_cycle_days: plan.billing_cycle === 'custom' ? Number(plan.custom_cycle_days) : null,
     p_features: Array.isArray(plan.features) ? plan.features : [],
     p_max_waiters: plan.max_waiters === '' || plan.max_waiters == null ? null : Number(plan.max_waiters),
+    p_default_duration_days:
+      plan.default_duration_days === '' || plan.default_duration_days == null
+        ? null
+        : Number(plan.default_duration_days),
     p_status: plan.status || 'active',
   })
 }

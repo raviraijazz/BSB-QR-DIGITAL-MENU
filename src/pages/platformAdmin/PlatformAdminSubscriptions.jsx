@@ -26,6 +26,7 @@ import {
   assignmentPayload,
   billingCycleLabel,
   buildAssignmentPreview,
+  durationIdFromDays,
   featureLines,
   parseFeatureLines,
   planStatusLabel,
@@ -45,6 +46,7 @@ const emptyPlanForm = {
   custom_cycle_days: '',
   features: '',
   max_waiters: '',
+  default_duration_days: '',
   status: 'active',
 }
 
@@ -67,6 +69,7 @@ function planFormFromRow(plan) {
     custom_cycle_days: plan.custom_cycle_days ? String(plan.custom_cycle_days) : '',
     features: featureLines(plan.features),
     max_waiters: plan.max_waiters ? String(plan.max_waiters) : '',
+    default_duration_days: plan.default_duration_days ? String(plan.default_duration_days) : '',
     status: plan.status === 'inactive' ? 'inactive' : 'active',
   }
 }
@@ -142,6 +145,18 @@ function PlanEditor({ form, setForm, error, busy, onSubmit, onCancel, isEdit }) 
           value={form.max_waiters}
           onChange={(e) => set('max_waiters', e.target.value)}
           placeholder="Not enforced yet"
+          className="mt-1 block w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-700"
+        />
+      </label>
+      <label className="text-xs font-medium text-slate-500">
+        Suggested validity (days)
+        <input
+          type="number"
+          min="1"
+          max="3650"
+          value={form.default_duration_days}
+          onChange={(e) => set('default_duration_days', e.target.value)}
+          placeholder="Optional; does not auto-apply on plan switch"
           className="mt-1 block w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-700"
         />
       </label>
@@ -224,6 +239,14 @@ function AssignDrawer({ open, restaurants, plans, selectedId, onClose, onAssigne
       setPlanId(restaurant.plan_id)
     }
   }, [restaurant?.plan_id, plans])
+
+  useEffect(() => {
+    if (!plan) return
+    const mapped = durationIdFromDays(plan.default_duration_days)
+    if (!mapped) return
+    setDurationId(mapped.id)
+    setCustomDays(mapped.customDays)
+  }, [plan?.id, plan?.default_duration_days])
 
   const previewResult = useMemo(
     () =>
@@ -617,59 +640,63 @@ export default function PlatformAdminSubscriptions() {
             onSubmit={savePlan}
           />
         ) : null}
-        {loading ? (
+          {loading ? (
           <p className="mt-4 text-sm text-slate-400">Loading plans…</p>
         ) : plans.length === 0 && !planForm ? (
           <EmptyState title="No plans yet" body="Create a plan to assign it to restaurants or use it as the default for new registrations." />
         ) : (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-sm">
-              <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-3 py-2 font-medium">Plan</th>
-                  <th className="px-3 py-2 font-medium">Price</th>
-                  <th className="px-3 py-2 font-medium">Cycle</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="px-3 py-2 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {plans.map((plan) => (
-                  <tr key={plan.id}>
-                    <td className="px-3 py-3">
-                      <p className="font-medium text-slate-800">{plan.name}</p>
-                      {plan.description ? <p className="text-xs text-slate-400">{plan.description}</p> : null}
-                    </td>
-                    <td className="px-3 py-3 text-slate-600">{formatMoney(plan.price_inr)}</td>
-                    <td className="px-3 py-3 text-slate-600">{billingCycleLabel(plan.billing_cycle, plan.custom_cycle_days)}</td>
-                    <td className="px-3 py-3 text-slate-600">{planStatusLabel(plan.status)}</td>
-                    <td className="px-3 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className="text-xs text-blue-700 hover:underline"
-                          onClick={() => setPlanForm(planFormFromRow(plan))}
-                        >
-                          Edit
-                        </button>
-                        {plan.status === 'active' ? (
-                          <button type="button" className="text-xs text-slate-600 hover:underline" onClick={() => changePlanStatus(plan, 'inactive')}>
-                            Deactivate
-                          </button>
-                        ) : (
-                          <button type="button" className="text-xs text-slate-600 hover:underline" onClick={() => changePlanStatus(plan, 'active')}>
-                            Activate
-                          </button>
-                        )}
-                        <button type="button" className="text-xs text-slate-600 hover:underline" onClick={() => changePlanStatus(plan, 'archived')}>
-                          Archive
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {plans.map((plan) => (
+              <div key={plan.id} className="flex flex-col rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-medium text-slate-900">{plan.name}</p>
+                    <p className="mt-1 text-lg font-semibold text-slate-800">{formatMoney(plan.price_inr)}</p>
+                    <p className="text-xs text-slate-500">{billingCycleLabel(plan.billing_cycle, plan.custom_cycle_days)}</p>
+                  </div>
+                  <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                    {planStatusLabel(plan.status)}
+                  </span>
+                </div>
+                {plan.description ? <p className="mt-2 text-sm text-slate-600">{plan.description}</p> : null}
+                {plan.default_duration_days ? (
+                  <p className="mt-2 text-xs text-slate-400">Suggested validity: {plan.default_duration_days} days (not applied on plan switch)</p>
+                ) : null}
+                {Array.isArray(plan.features) && plan.features.length ? (
+                  <ul className="mt-2 list-disc pl-4 text-xs text-slate-600">
+                    {plan.features.map((feature) => (
+                      <li key={feature}>{feature}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                {plan.max_waiters ? (
+                  <p className="mt-2 text-xs text-slate-400">Waiter limit recorded: {plan.max_waiters} (not enforced yet)</p>
+                ) : null}
+                <div className="mt-auto flex flex-wrap gap-2 pt-3">
+                  <button
+                    type="button"
+                    className="text-xs text-blue-700 hover:underline"
+                    onClick={() => setPlanForm(planFormFromRow(plan))}
+                  >
+                    Edit
+                  </button>
+                  {plan.status === 'active' ? (
+                    <button type="button" className="text-xs text-slate-600 hover:underline" onClick={() => changePlanStatus(plan, 'inactive')}>
+                      Deactivate
+                    </button>
+                  ) : plan.status === 'inactive' ? (
+                    <button type="button" className="text-xs text-slate-600 hover:underline" onClick={() => changePlanStatus(plan, 'active')}>
+                      Activate
+                    </button>
+                  ) : null}
+                  {plan.status !== 'archived' ? (
+                    <button type="button" className="text-xs text-slate-600 hover:underline" onClick={() => changePlanStatus(plan, 'archived')}>
+                      Archive
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -753,6 +780,7 @@ export default function PlatformAdminSubscriptions() {
                   <th className="px-3 py-2 font-medium">Access</th>
                   <th className="px-3 py-2 font-medium">Validity</th>
                   <th className="px-3 py-2 font-medium">Remaining</th>
+                  <th className="px-3 py-2 font-medium">Renewal</th>
                   <th className="px-3 py-2 font-medium">Actions</th>
                 </tr>
               </thead>
@@ -778,6 +806,7 @@ export default function PlatformAdminSubscriptions() {
                       {row.valid_from ? formatDate(row.valid_from) : '—'} → {row.valid_until ? formatDate(row.valid_until) : 'No expiry'}
                     </td>
                     <td className="px-3 py-3 text-slate-600">{remainingDaysLabel(row.remaining_days)}</td>
+                    <td className="px-3 py-3 text-xs text-slate-500">Manual — founder assigns or renews. No payment collection.</td>
                     <td className="px-3 py-3">
                       <button
                         type="button"

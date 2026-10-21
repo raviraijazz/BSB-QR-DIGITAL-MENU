@@ -20,6 +20,7 @@ create table if not exists public.platform_subscription_plans (
   custom_cycle_days integer,
   features jsonb not null default '[]'::jsonb,
   max_waiters integer,
+  default_duration_days integer,
   status text not null default 'active',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -36,9 +37,26 @@ create table if not exists public.platform_subscription_plans (
     check (jsonb_typeof(features) = 'array'),
   constraint platform_subscription_plans_waiters_check
     check (max_waiters is null or max_waiters >= 1),
+  constraint platform_subscription_plans_default_duration_check
+    check (default_duration_days is null or default_duration_days between 1 and 3650),
   constraint platform_subscription_plans_status_check
     check (status in ('active', 'inactive', 'archived'))
 );
+
+alter table public.platform_subscription_plans
+  add column if not exists default_duration_days integer;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'platform_subscription_plans_default_duration_check'
+  ) then
+    alter table public.platform_subscription_plans
+      add constraint platform_subscription_plans_default_duration_check
+      check (default_duration_days is null or default_duration_days between 1 and 3650);
+  end if;
+end $$;
 
 create unique index if not exists platform_subscription_plans_name_key
   on public.platform_subscription_plans (lower(btrim(name)))
@@ -196,6 +214,7 @@ begin
 end;
 $$;
 
+drop function if exists public.platform_upsert_plan(uuid, text, text, numeric, text, integer, jsonb, integer, text);
 create or replace function public.platform_upsert_plan(
   p_id uuid,
   p_name text,
@@ -205,7 +224,8 @@ create or replace function public.platform_upsert_plan(
   p_custom_cycle_days integer,
   p_features jsonb,
   p_max_waiters integer,
-  p_status text
+  p_status text,
+  p_default_duration_days integer default null
 )
 returns public.platform_subscription_plans
 language plpgsql
@@ -220,6 +240,7 @@ declare
   v_days integer;
   v_waiters integer;
   v_features jsonb;
+  v_default_days integer;
 begin
   perform public.platform_require_admin();
 
@@ -254,6 +275,11 @@ begin
     raise exception 'Waiter limit must be a whole number of 1 or more' using errcode = '22023';
   end if;
 
+  v_default_days := p_default_duration_days;
+  if v_default_days is not null and (v_default_days < 1 or v_default_days > 3650) then
+    raise exception 'Default validity must be between 1 and 3650 days' using errcode = '22023';
+  end if;
+
   v_features := coalesce(p_features, '[]'::jsonb);
   if jsonb_typeof(v_features) <> 'array' then
     v_features := '[]'::jsonb;
@@ -261,9 +287,9 @@ begin
 
   if p_id is null then
     insert into public.platform_subscription_plans
-      (name, description, price_inr, billing_cycle, custom_cycle_days, features, max_waiters, status)
+      (name, description, price_inr, billing_cycle, custom_cycle_days, features, max_waiters, default_duration_days, status)
     values
-      (v_name, coalesce(p_description, ''), p_price_inr, v_cycle, v_days, v_features, v_waiters, v_status)
+      (v_name, coalesce(p_description, ''), p_price_inr, v_cycle, v_days, v_features, v_waiters, v_default_days, v_status)
     returning * into v_row;
   else
     update public.platform_subscription_plans
@@ -274,6 +300,7 @@ begin
           custom_cycle_days = v_days,
           features = v_features,
           max_waiters = v_waiters,
+          default_duration_days = v_default_days,
           status = case when status = 'archived' then status else v_status end,
           updated_at = now()
       where id = p_id
@@ -803,7 +830,7 @@ grant execute on function public.platform_restaurant_detail(uuid) to service_rol
 -- 11. Grants — founder RPCs self-authorize via platform_require_admin()
 -- ---------------------------------------------------------------------------
 revoke all on function public.platform_list_plans(boolean) from public, anon;
-revoke all on function public.platform_upsert_plan(uuid, text, text, numeric, text, integer, jsonb, integer, text) from public, anon;
+revoke all on function public.platform_upsert_plan(uuid, text, text, numeric, text, integer, jsonb, integer, text, integer) from public, anon;
 revoke all on function public.platform_set_plan_status(uuid, text) from public, anon;
 revoke all on function public.platform_get_subscription_settings() from public, anon;
 revoke all on function public.platform_set_subscription_settings(uuid, integer, boolean) from public, anon;
@@ -811,7 +838,7 @@ revoke all on function public.platform_assign_subscription(uuid, uuid, boolean, 
 revoke all on function public.platform_list_assignments(uuid) from public, anon;
 
 grant execute on function public.platform_list_plans(boolean) to authenticated;
-grant execute on function public.platform_upsert_plan(uuid, text, text, numeric, text, integer, jsonb, integer, text) to authenticated;
+grant execute on function public.platform_upsert_plan(uuid, text, text, numeric, text, integer, jsonb, integer, text, integer) to authenticated;
 grant execute on function public.platform_set_plan_status(uuid, text) to authenticated;
 grant execute on function public.platform_get_subscription_settings() to authenticated;
 grant execute on function public.platform_set_subscription_settings(uuid, integer, boolean) to authenticated;
