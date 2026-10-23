@@ -29,6 +29,11 @@ const ACTION_LABELS = {
   subscription_assign: 'Subscription assigned',
   subscription_switch: 'Subscription switched',
   subscription_settings: 'Default subscription settings updated',
+  subscription_invoice_create: 'Subscription invoice created',
+  subscription_payment_record: 'Subscription payment recorded',
+  subscription_payment_renew: 'Subscription payment recorded with renewal',
+  subscription_invoice_refund: 'Subscription refund recorded',
+  subscription_invoice_cancel: 'Subscription invoice cancelled',
   change_password: 'Password changed',
   view_restaurant: 'Restaurant viewed',
 }

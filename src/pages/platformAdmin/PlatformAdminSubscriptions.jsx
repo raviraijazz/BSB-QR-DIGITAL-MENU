@@ -606,7 +606,10 @@ export default function PlatformAdminSubscriptions() {
         <h1 className="text-2xl font-semibold text-slate-900">Subscription & Plans</h1>
         <p className="mt-1 text-sm text-slate-500">
           Founder-only catalog and restaurant assignment. Prices and names come from plans you create here. No sample
-          plans are seeded. Plan pricing is not a payment collection record.
+          plans are seeded. Plan pricing is not a payment collection record.{' '}
+          <Link to="/platform-admin/subscriptions/payments" className="text-blue-700 hover:underline">
+            Payments & History
+          </Link>
         </p>
       </div>
 
@@ -808,16 +811,26 @@ export default function PlatformAdminSubscriptions() {
                     <td className="px-3 py-3 text-slate-600">{remainingDaysLabel(row.remaining_days)}</td>
                     <td className="px-3 py-3 text-xs text-slate-500">Manual — founder assigns or renews. No payment collection.</td>
                     <td className="px-3 py-3">
-                      <button
-                        type="button"
-                        className="text-xs text-blue-700 hover:underline"
-                        onClick={() => {
-                          setSelectedRestaurant(row.id)
-                          setDrawerOpen(true)
-                        }}
-                      >
-                        Assign / Update
-                      </button>
+                      <div className="flex flex-col items-start gap-1">
+                        <button
+                          type="button"
+                          className="text-xs text-blue-700 hover:underline"
+                          onClick={() => {
+                            setSelectedRestaurant(row.id)
+                            setDrawerOpen(true)
+                          }}
+                        >
+                          Assign / Update
+                        </button>
+                        {row.plan_id ? (
+                          <Link
+                            to={`/platform-admin/subscriptions/payments?restaurant=${row.id}`}
+                            className="text-xs text-blue-700 hover:underline"
+                          >
+                            Create invoice
+                          </Link>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}

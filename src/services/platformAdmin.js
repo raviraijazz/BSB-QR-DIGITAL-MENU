@@ -245,3 +245,69 @@ export function assignSubscription(payload) {
 export function listSubscriptionAssignments(restaurantId) {
   return rpc('platform_list_assignments', { p_restaurant_id: restaurantId })
 }
+
+export function listSubscriptionInvoices({
+  search = '',
+  planId = null,
+  status = '',
+  method = '',
+  from = null,
+  to = null,
+  page = 1,
+  pageSize = 20,
+} = {}) {
+  return rpc('platform_list_subscription_invoices', {
+    p_search: search,
+    p_plan_id: planId || null,
+    p_status: status || '',
+    p_method: method || '',
+    p_from: from || null,
+    p_to: to || null,
+    p_limit: pageSize,
+    p_offset: (page - 1) * pageSize,
+  })
+}
+
+export function getSubscriptionBillingSummary({ from = null, to = null } = {}) {
+  return rpc('platform_subscription_billing_summary', { p_from: from || null, p_to: to || null })
+}
+
+export function getSubscriptionInvoice(id) {
+  return rpc('platform_subscription_invoice_detail', { p_id: id })
+}
+
+export function createSubscriptionInvoice(payload) {
+  return rpc('platform_create_subscription_invoice', payload)
+}
+
+export function recordSubscriptionPayment(payload) {
+  return rpc('platform_record_subscription_payment', payload)
+}
+
+export function cancelSubscriptionInvoice(invoiceId, reason = '') {
+  return rpc('platform_cancel_subscription_invoice', { p_invoice_id: invoiceId, p_reason: reason })
+}
+
+export function loadPlatformReports({
+  from,
+  to,
+  restaurantId = null,
+  status = '',
+  planId = null,
+  orderStatus = '',
+  paymentMethod = '',
+  bucket = 'day',
+  expiryDays = 30,
+} = {}) {
+  return rpc('platform_reports', {
+    p_from: from,
+    p_to: to,
+    p_restaurant_id: restaurantId || null,
+    p_status: status || '',
+    p_plan_id: planId || null,
+    p_order_status: orderStatus || '',
+    p_payment_method: paymentMethod || '',
+    p_bucket: bucket || 'day',
+    p_expiry_days: Number(expiryDays) || 30,
+  })
+}

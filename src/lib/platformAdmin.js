@@ -3,7 +3,9 @@ export const PLATFORM_ADMIN_HOME = '/platform-admin'
 export const PLATFORM_ADMIN_RESTAURANTS = '/platform-admin/restaurants'
 export const PLATFORM_ADMIN_IMPORT = '/platform-admin/import-menu'
 export const PLATFORM_ADMIN_SUBSCRIPTIONS = '/platform-admin/subscriptions'
+export const PLATFORM_ADMIN_BILLING = '/platform-admin/subscriptions/payments'
 export const PLATFORM_ADMIN_AUDIT = '/platform-admin/audit'
+export const PLATFORM_ADMIN_REPORTS = '/platform-admin/reports'
 export const PLATFORM_ADMIN_ACCOUNT = '/platform-admin/account'
 
 // Only implemented routes use `to`. Everything else is a non-interactive
@@ -19,6 +21,7 @@ export const PLATFORM_NAV = [
       { to: PLATFORM_ADMIN_AUDIT, label: 'Audit Trail', icon: 'history' },
       { label: 'Add Restaurant', icon: 'plus', planned: true },
       { to: PLATFORM_ADMIN_SUBSCRIPTIONS, label: 'Subscription & Plans', icon: 'collections' },
+      { to: PLATFORM_ADMIN_BILLING, label: 'Payments & History', icon: 'orders' },
     ],
   },
   {
@@ -35,7 +38,7 @@ export const PLATFORM_NAV = [
   {
     type: 'group',
     label: 'Reports & Analytics',
-    items: [{ label: 'Platform Reports', icon: 'reports', planned: true }],
+    items: [{ to: PLATFORM_ADMIN_REPORTS, label: 'Platform Reports', icon: 'reports' }],
   },
   {
     type: 'group',
