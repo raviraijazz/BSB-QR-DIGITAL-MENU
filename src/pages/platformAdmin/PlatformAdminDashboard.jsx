@@ -65,12 +65,20 @@ export default function PlatformAdminDashboard() {
           <h1 className="text-2xl font-semibold text-slate-900">Platform Dashboard</h1>
           <p className="mt-1 text-sm text-slate-500">Platform-wide overview across every restaurant.</p>
         </div>
-        <Link
-          to="/platform-admin/restaurants"
-          className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          View all restaurants
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            to="/platform-admin/reports"
+            className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Platform Reports
+          </Link>
+          <Link
+            to="/platform-admin/restaurants"
+            className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            View all restaurants
+          </Link>
+        </div>
       </div>
 
       <Alert>{error}</Alert>

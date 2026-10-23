@@ -16,7 +16,7 @@ test('locked founder may only call whoami and change_password', () => {
 })
 
 test('locked founder is denied every privileged action', () => {
-  const privileged = ['overview', 'restaurants', 'restaurant', 'fetch_sheet', 'start_support', 'import', 'audit']
+  const privileged = ['overview', 'restaurants', 'restaurant', 'fetch_sheet', 'start_support', 'import', 'audit', 'reports']
   for (const action of privileged) {
     assert.equal(isFounderActionAllowed(action, true), false, action)
   }
