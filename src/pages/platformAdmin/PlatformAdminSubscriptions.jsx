@@ -28,13 +28,12 @@ import {
   buildAssignmentPreview,
   durationIdFromDays,
   featureLines,
-  parseFeatureLines,
   planStatusLabel,
   restaurantNeedsValidity,
+  submitPlanForm,
   toDateInputUtc,
   todayUtcDate,
   validateDefaultSettings,
-  validatePlanInput,
 } from '../../lib/subscriptionPlans'
 
 const emptyPlanForm = {
@@ -183,7 +182,7 @@ function PlanEditor({ form, setForm, error, busy, onSubmit, onCancel, isEdit }) 
         <Button variant="secondary" type="button" onClick={onCancel} disabled={busy}>
           Cancel
         </Button>
-        <Button className="bg-blue-600 hover:bg-blue-700" disabled={busy}>
+        <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={busy}>
           {busy ? 'Saving…' : isEdit ? 'Save plan' : 'Create plan'}
         </Button>
       </div>
@@ -535,25 +534,16 @@ export default function PlatformAdminSubscriptions() {
 
   async function savePlan(event) {
     event.preventDefault()
-    const payload = {
-      ...planForm,
-      features: parseFeatureLines(planForm.features),
-    }
-    const validation = validatePlanInput(payload)
-    if (validation) {
-      setPlanError(validation)
-      return
-    }
     setPlanBusy(true)
     setPlanError('')
-    const { error: nextError } = await upsertSubscriptionPlan(payload)
+    const result = await submitPlanForm(planForm, upsertSubscriptionPlan)
     setPlanBusy(false)
-    if (nextError) {
-      setPlanError(nextError.message)
+    if (!result.ok) {
+      setPlanError(result.error)
       return
     }
     setPlanForm(null)
-    setNotice(planForm.id ? 'Plan updated.' : 'Plan created.')
+    setNotice(result.notice)
     load()
   }
 
@@ -748,7 +738,7 @@ export default function PlatformAdminSubscriptions() {
           ) : null}
           {settingsError ? <p className="sm:col-span-2 text-sm text-red-700">{settingsError}</p> : null}
           <div className="sm:col-span-2">
-            <Button className="bg-blue-600 hover:bg-blue-700" disabled={settingsBusy}>
+            <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={settingsBusy}>
               {settingsBusy ? 'Saving…' : 'Save default settings'}
             </Button>
           </div>

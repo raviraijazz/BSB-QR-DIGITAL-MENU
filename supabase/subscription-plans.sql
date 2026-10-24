@@ -215,6 +215,7 @@ end;
 $$;
 
 drop function if exists public.platform_upsert_plan(uuid, text, text, numeric, text, integer, jsonb, integer, text);
+drop function if exists public.platform_upsert_plan(uuid, text, text, numeric, text, integer, jsonb, integer, text, integer);
 create or replace function public.platform_upsert_plan(
   p_id uuid,
   p_name text,

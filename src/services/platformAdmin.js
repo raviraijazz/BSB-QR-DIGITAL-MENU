@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { buildPlanUpsertArgs } from '../lib/subscriptionPlans'
 
 // Client-side marker for "the browser has no usable Supabase session".
 // Kept separate from network/authorization errors so the UI can send the user
@@ -205,21 +206,7 @@ export function listSubscriptionPlans(includeArchived = false) {
 }
 
 export function upsertSubscriptionPlan(plan) {
-  return rpc('platform_upsert_plan', {
-    p_id: plan.id || null,
-    p_name: plan.name,
-    p_description: plan.description || '',
-    p_price_inr: Number(plan.price_inr),
-    p_billing_cycle: plan.billing_cycle,
-    p_custom_cycle_days: plan.billing_cycle === 'custom' ? Number(plan.custom_cycle_days) : null,
-    p_features: Array.isArray(plan.features) ? plan.features : [],
-    p_max_waiters: plan.max_waiters === '' || plan.max_waiters == null ? null : Number(plan.max_waiters),
-    p_default_duration_days:
-      plan.default_duration_days === '' || plan.default_duration_days == null
-        ? null
-        : Number(plan.default_duration_days),
-    p_status: plan.status || 'active',
-  })
+  return rpc('platform_upsert_plan', buildPlanUpsertArgs(plan))
 }
 
 export function setSubscriptionPlanStatus(planId, status) {

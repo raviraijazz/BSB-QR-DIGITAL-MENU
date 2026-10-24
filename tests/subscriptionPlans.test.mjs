@@ -6,12 +6,14 @@ import {
   assignmentPayload,
   billingCycleLabel,
   buildAssignmentPreview,
+  buildPlanUpsertArgs,
   computeValidUntil,
   durationFromOption,
   durationIdFromDays,
   parseDateInput,
   parseFeatureLines,
   restaurantNeedsValidity,
+  submitPlanForm,
   toDateInputUtc,
   validateDefaultSettings,
   validatePlanInput,
@@ -42,6 +44,83 @@ test('validatePlanInput accepts zero price and optional waiter limit', () => {
     validatePlanInput({ name: 'Trial', price_inr: 0, billing_cycle: 'yearly', default_duration_days: 0 }),
     'Default validity must be between 1 and 3650 days',
   )
+})
+
+test('submitPlanForm saves a yearly plan and only then reports success', async () => {
+  const form = {
+    id: '',
+    name: 'YEARLY',
+    description: '',
+    price_inr: '12999',
+    billing_cycle: 'yearly',
+    custom_cycle_days: '',
+    features: '',
+    max_waiters: '',
+    default_duration_days: '',
+    status: 'active',
+  }
+  const calls = []
+  const result = await submitPlanForm(form, async (payload) => {
+    calls.push(payload)
+    return { data: { id: 'plan-1', ...payload }, error: null }
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.keepForm, false)
+  assert.equal(result.notice, 'Plan created.')
+  assert.equal(result.error, '')
+  assert.equal(calls.length, 1)
+  assert.deepEqual(buildPlanUpsertArgs(calls[0]), {
+    p_id: null,
+    p_name: 'YEARLY',
+    p_description: '',
+    p_price_inr: 12999,
+    p_billing_cycle: 'yearly',
+    p_custom_cycle_days: null,
+    p_features: [],
+    p_max_waiters: null,
+    p_status: 'active',
+    p_default_duration_days: null,
+  })
+})
+
+test('submitPlanForm keeps the form and surfaces the save error', async () => {
+  const form = {
+    id: '',
+    name: 'YEARLY',
+    description: 'Kept on failure',
+    price_inr: '12999',
+    billing_cycle: 'yearly',
+    custom_cycle_days: '',
+    features: 'QR menu',
+    max_waiters: '',
+    default_duration_days: '',
+    status: 'active',
+  }
+  const result = await submitPlanForm(form, async () => ({
+    data: null,
+    error: new Error('Could not find the function public.platform_upsert_plan'),
+  }))
+  assert.equal(result.ok, false)
+  assert.equal(result.keepForm, true)
+  assert.equal(result.notice, '')
+  assert.equal(result.error, 'Could not find the function public.platform_upsert_plan')
+  assert.equal(result.payload.name, 'YEARLY')
+  assert.equal(result.payload.price_inr, '12999')
+})
+
+test('submitPlanForm does not call save when required fields are missing', async () => {
+  let called = false
+  const result = await submitPlanForm(
+    { name: '', price_inr: '12999', billing_cycle: 'yearly', features: '' },
+    async () => {
+      called = true
+      return { data: { id: 'should-not-save' }, error: null }
+    },
+  )
+  assert.equal(called, false)
+  assert.equal(result.ok, false)
+  assert.equal(result.keepForm, true)
+  assert.equal(result.error, 'Plan name is required')
 })
 
 test('durationIdFromDays maps known presets and custom days', () => {

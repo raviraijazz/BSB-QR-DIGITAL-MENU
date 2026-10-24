@@ -187,6 +187,56 @@ export function validatePlanInput(input) {
   return ''
 }
 
+export function planFormPayload(form) {
+  return {
+    ...form,
+    features: parseFeatureLines(form?.features),
+  }
+}
+
+export function buildPlanUpsertArgs(plan) {
+  return {
+    p_id: plan.id || null,
+    p_name: plan.name,
+    p_description: plan.description || '',
+    p_price_inr: Number(plan.price_inr),
+    p_billing_cycle: plan.billing_cycle,
+    p_custom_cycle_days: plan.billing_cycle === 'custom' ? Number(plan.custom_cycle_days) : null,
+    p_features: Array.isArray(plan.features) ? plan.features : [],
+    p_max_waiters: plan.max_waiters === '' || plan.max_waiters == null ? null : Number(plan.max_waiters),
+    p_status: plan.status || 'active',
+    p_default_duration_days:
+      plan.default_duration_days === '' || plan.default_duration_days == null
+        ? null
+        : Number(plan.default_duration_days),
+  }
+}
+
+export async function submitPlanForm(form, save) {
+  const payload = planFormPayload(form)
+  const validation = validatePlanInput(payload)
+  if (validation) {
+    return { ok: false, error: validation, keepForm: true, notice: '', payload }
+  }
+  const { error } = await save(payload)
+  if (error) {
+    return {
+      ok: false,
+      error: error.message || String(error),
+      keepForm: true,
+      notice: '',
+      payload,
+    }
+  }
+  return {
+    ok: true,
+    error: '',
+    keepForm: false,
+    notice: form?.id ? 'Plan updated.' : 'Plan created.',
+    payload,
+  }
+}
+
 export function durationIdFromDays(days) {
   const n = Number(days)
   if (!Number.isInteger(n) || n < 1) return null
