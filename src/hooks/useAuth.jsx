@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { endAppSession } from '../services/appSession'
 import { roleFromUser } from '../services/profiles'
 
 const AuthContext = createContext(null)
@@ -82,7 +83,14 @@ export function AuthProvider({ children }) {
       loading,
       isOwner: Boolean(user) && !loading && role === 'owner',
       isWaiter: Boolean(user) && !loading && role === 'waiter',
-      signOut: () => supabase.auth.signOut(),
+      signOut: async () => {
+        try {
+          await endAppSession('sign_out')
+        } catch {
+          /* still sign out */
+        }
+        return supabase.auth.signOut()
+      },
     }),
     [session, user, profile, role, loading]
   )

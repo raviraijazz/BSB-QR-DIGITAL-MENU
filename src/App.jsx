@@ -4,6 +4,7 @@ import AppErrorBoundary from './components/AppErrorBoundary'
 import GuestRoute from './components/GuestRoute'
 import PlatformAdminRoute from './components/PlatformAdminRoute'
 import ProtectedRoute from './components/ProtectedRoute'
+import SessionGuard from './components/SessionGuard'
 import Spinner from './components/Spinner'
 import { AuthProvider } from './hooks/useAuth'
 import { PlatformAdminProvider } from './hooks/usePlatformAdmin'
@@ -50,6 +51,7 @@ const PlatformAdminSubscriptions = lazy(() => import('./pages/platformAdmin/Plat
 const PlatformAdminBilling = lazy(() => import('./pages/platformAdmin/PlatformAdminBilling'))
 const PlatformAdminReports = lazy(() => import('./pages/platformAdmin/PlatformAdminReports'))
 const PlatformAdminAudit = lazy(() => import('./pages/platformAdmin/PlatformAdminAudit'))
+const PlatformAdminSessions = lazy(() => import('./pages/platformAdmin/PlatformAdminSessions'))
 const PlatformAdminPlanned = lazy(() => import('./pages/platformAdmin/PlatformAdminPlanned'))
 const SupportOverview = lazy(() => import('./pages/dashboard/Overview'))
 const SupportCategories = lazy(() => import('./pages/dashboard/Categories'))
@@ -67,6 +69,7 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <PlatformAdminProvider>
+          <SessionGuard>
           <AppErrorBoundary>
             <Suspense fallback={<Spinner full label="Loading Founder Console..." />}>
             <Routes>
@@ -85,6 +88,7 @@ export default function App() {
                   <Route path="reports" element={<PlatformAdminReports />} />
                   <Route path="audit" element={<PlatformAdminAudit />} />
                   <Route path="account" element={<PlatformAdminAccount />} />
+                  <Route path="sessions" element={<PlatformAdminSessions />} />
                   <Route path="*" element={<PlatformAdminPlanned />} />
                 </Route>
                 {/* Founder support session opens the real owner dashboard for
@@ -155,6 +159,7 @@ export default function App() {
             </Routes>
           </Suspense>
           </AppErrorBoundary>
+          </SessionGuard>
         </PlatformAdminProvider>
       </BrowserRouter>
     </AuthProvider>

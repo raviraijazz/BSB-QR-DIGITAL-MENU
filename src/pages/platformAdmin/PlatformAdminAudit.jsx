@@ -36,6 +36,9 @@ const ACTION_LABELS = {
   subscription_invoice_cancel: 'Subscription invoice cancelled',
   change_password: 'Password changed',
   view_restaurant: 'Restaurant viewed',
+  session_policy_update: 'Session policies updated',
+  session_revoke: 'Session terminated',
+  session_revoke_user: 'Account sessions revoked',
 }
 
 export default function PlatformAdminAudit() {

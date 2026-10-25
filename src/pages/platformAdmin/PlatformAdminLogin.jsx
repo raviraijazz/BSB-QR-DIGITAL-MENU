@@ -8,6 +8,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { usePlatformAdmin } from '../../hooks/usePlatformAdmin'
 import { validateFounderLogin } from '../../lib/auth'
 import { PLATFORM_ADMIN_HOME } from '../../lib/platformAdmin'
+import { takeSessionNotice } from '../../lib/sessionPolicy'
 import { FOUNDER_MUST_CHANGE_PATH } from '../../../supabase/functions/_shared/founder-gate.js'
 import { founderLogin, installSession } from '../../services/platformAdmin'
 
@@ -22,7 +23,11 @@ export default function PlatformAdminLogin() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const notice = typeof location.state?.notice === 'string' ? location.state.notice : ''
+  const [notice] = useState(() =>
+    typeof location.state?.notice === 'string' && location.state.notice
+      ? location.state.notice
+      : takeSessionNotice(),
+  )
 
   useEffect(() => {
     if (user && !checked && !checking) verify()
@@ -37,7 +42,7 @@ export default function PlatformAdminLogin() {
     )
   }
 
-  if (user && checked && isAdmin) {
+  if (user && checked && isAdmin && !notice) {
     return <Navigate to={mustChangePassword ? FOUNDER_MUST_CHANGE_PATH : PLATFORM_ADMIN_HOME} replace />
   }
 
@@ -86,7 +91,7 @@ export default function PlatformAdminLogin() {
             <p className="mt-1 text-sm text-slate-500">Authorized founder access only.</p>
           </div>
           <Alert>{error}</Alert>
-          <Alert type="success">{notice}</Alert>
+          <Alert type="info">{notice}</Alert>
           <Field label="Username">
             <input
               className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink placeholder:text-stone-400"

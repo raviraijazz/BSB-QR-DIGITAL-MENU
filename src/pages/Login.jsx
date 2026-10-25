@@ -4,6 +4,7 @@ import Alert from '../components/Alert'
 import Button from '../components/Button'
 import Field, { inputClass } from '../components/Field'
 import { authEmailFromUsername, friendlyAuthError, validateLogin } from '../lib/auth'
+import { takeSessionNotice } from '../lib/sessionPolicy'
 import { supabase } from '../lib/supabase'
 import { roleFromUser } from '../services/profiles'
 
@@ -14,6 +15,11 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [notice] = useState(() =>
+    typeof location.state?.notice === 'string' && location.state.notice
+      ? location.state.notice
+      : takeSessionNotice(),
+  )
 
   async function onSubmit(event) {
     event.preventDefault()
@@ -56,6 +62,7 @@ export default function Login() {
       <p className="mt-2 text-sm text-muted">Log in to manage your digital menu.</p>
       <form onSubmit={onSubmit} className="mt-8 space-y-4 rounded-2xl border border-line bg-card p-6">
         <Alert>{error}</Alert>
+        <Alert type="info">{notice}</Alert>
         <Field label="Username">
           <input
             className={inputClass}

@@ -298,3 +298,23 @@ export function loadPlatformReports({
     p_expiry_days: Number(expiryDays) || 30,
   })
 }
+
+export function getSessionPolicies() {
+  return rpc('platform_get_session_policies')
+}
+
+export function setSessionPolicies(policies) {
+  return rpc('platform_set_session_policies', { p_policies: policies })
+}
+
+export function listAppSessions() {
+  return rpc('platform_list_app_sessions')
+}
+
+export function revokeAppSession(id, reason = '') {
+  return rpc('platform_revoke_app_session', { p_id: id, p_reason: reason })
+}
+
+export function revokeUserSessions(userId, reason = '') {
+  return rpc('platform_revoke_user_sessions', { p_user_id: userId, p_reason: reason })
+}

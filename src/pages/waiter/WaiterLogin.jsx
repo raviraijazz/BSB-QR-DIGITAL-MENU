@@ -4,6 +4,7 @@ import Alert from '../../components/Alert'
 import Button from '../../components/Button'
 import Field, { inputClass } from '../../components/Field'
 import { validateWaiterLogin } from '../../lib/auth'
+import { takeSessionNotice } from '../../lib/sessionPolicy'
 import { signInWaiter } from '../../services/waiterAuth'
 
 export default function WaiterLogin() {
@@ -14,6 +15,11 @@ export default function WaiterLogin() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [notice] = useState(() =>
+    typeof location.state?.notice === 'string' && location.state.notice
+      ? location.state.notice
+      : takeSessionNotice(),
+  )
 
   async function onSubmit(event) {
     event.preventDefault()
@@ -52,6 +58,7 @@ export default function WaiterLogin() {
       <p className="mt-2 text-sm text-muted">Use your waiter ID and password. Restaurant is assigned automatically.</p>
       <form onSubmit={onSubmit} className="mt-8 space-y-4 rounded-2xl border border-line bg-card p-6">
         <Alert>{error}</Alert>
+        <Alert type="info">{notice}</Alert>
         <Field label="Waiter ID">
           <input
             className={inputClass}
