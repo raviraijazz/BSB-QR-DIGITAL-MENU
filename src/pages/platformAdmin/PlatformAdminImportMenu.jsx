@@ -3,12 +3,15 @@ import { useSearchParams } from 'react-router-dom'
 import Alert from '../../components/Alert'
 import Button from '../../components/Button'
 import { fetchSheet, importMenu, listPlatformRestaurants } from '../../services/platformAdmin'
+import { formatDateTime } from '../../lib/platformAdmin'
 import {
   SAMPLE_SHEET_URL,
   buildRows,
+  formatImportSuccess,
   formatVariantsPreview,
   guessMapping,
   IMPORT_FIELDS,
+  newImportRequestId,
   parseCsvText,
   resolveVariantColumns,
   summarizeImport,
@@ -26,6 +29,8 @@ export default function PlatformAdminImportMenu() {
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [lastResult, setLastResult] = useState(null)
+  const importLock = useRef(false)
   const fileRef = useRef(null)
 
   useEffect(() => {
@@ -47,6 +52,7 @@ export default function PlatformAdminImportMenu() {
     setMapping(guessMapping(nextGrid[0] || []))
     setNotice('')
     setError('')
+    setLastResult(null)
   }, [])
 
   async function onFetchSheet() {
@@ -84,6 +90,7 @@ export default function PlatformAdminImportMenu() {
   }
 
   async function onImport() {
+    if (importLock.current || importing) return
     if (!restaurantId) {
       setError('Select the restaurant to import into.')
       return
@@ -92,18 +99,26 @@ export default function PlatformAdminImportMenu() {
       setError('There are no valid rows to import.')
       return
     }
+    importLock.current = true
     setImporting(true)
     setError('')
     setNotice('')
-    const { data, error: nextError } = await importMenu(restaurantId, rows)
+    setLastResult(null)
+    const { data, error: nextError } = await importMenu(restaurantId, rows, newImportRequestId())
+    importLock.current = false
     setImporting(false)
     if (nextError) {
       setError(nextError.message)
       return
     }
-    setNotice(
-      `Import complete: ${data.created_items} items added, ${data.created_categories} categories created, ${data.skipped} skipped.`,
-    )
+    if (!data || data.ok === false) {
+      setError('Import did not complete. The preview is unchanged so you can retry.')
+      return
+    }
+    const completedAt = formatDateTime(data.completed_at || new Date().toISOString())
+    const restaurantName = selected?.name || data.restaurant_name || 'selected restaurant'
+    setLastResult({ ...data, restaurant_name: restaurantName, completed_at: completedAt })
+    setNotice(formatImportSuccess(data, { restaurantName, completedAt }))
   }
 
   const selected = restaurants.find((r) => r.id === restaurantId)
@@ -320,12 +335,36 @@ export default function PlatformAdminImportMenu() {
             ) : null}
           </div>
 
+          {lastResult ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+              <p className="font-medium">Menu import completed successfully</p>
+              <p className="mt-1">
+                {lastResult.restaurant_name} · {lastResult.completed_at}
+              </p>
+              <p className="mt-2 text-xs">
+                {lastResult.created_items || 0} items created · {lastResult.created_variants || 0} variants created ·{' '}
+                {lastResult.skipped_items || 0} existing items skipped · {lastResult.conflicts || 0} conflicts ·{' '}
+                {lastResult.failed_rows || 0} failed rows
+              </p>
+              {Array.isArray(lastResult.conflict_samples) && lastResult.conflict_samples.length ? (
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-800">
+                  {lastResult.conflict_samples.map((row, index) => (
+                    <li key={`${row.item}-${row.variant}-${index}`}>
+                      {row.item}
+                      {row.variant ? ` / ${row.variant}` : ''}: kept {row.existing}, source had {row.incoming}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-slate-500">
               Importing into <span className="font-medium text-slate-700">{selected?.name || 'no restaurant selected'}</span>
             </p>
             <Button className="bg-blue-600 hover:bg-blue-700" onClick={onImport} disabled={importing || !rows.length || !restaurantId}>
-              {importing ? 'Importing…' : `Import ${rows.length} items`}
+              {importing ? 'Importing menu…' : `Import ${rows.length} items`}
             </Button>
           </div>
         </>

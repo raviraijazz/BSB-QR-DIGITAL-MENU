@@ -2,10 +2,14 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   SAMPLE_SHEET_URL,
+  applyImportBatch,
+  applyImportedItem,
   buildRows,
   detectVariantColumns,
+  formatImportSuccess,
   formatVariantsPreview,
   guessMapping,
+  mergeImportedVariants,
   parseCsvText,
   summarizeImport,
 } from '../src/lib/menuImport.js'
@@ -248,4 +252,114 @@ test('selected variant unit price is used for cart and history display', () => {
   assert.equal(itemName, 'Chicken Biryani (Full)')
   const historyVariant = itemName.match(/\(([^)]+)\)\s*$/)?.[1]
   assert.equal(historyVariant, 'Full')
+})
+
+const chickenBiryani = {
+  name: 'Chicken Biryani',
+  category: 'Biryani',
+  price: 180,
+  variants: [
+    { name: 'Quarter', price: 180, is_available: true },
+    { name: 'Half', price: 280, is_available: true },
+    { name: 'Full', price: 420, is_available: true },
+  ],
+}
+
+test('repeat import of the same item does not create a second parent or variant', () => {
+  const first = applyImportBatch({ categories: [], items: [] }, [chickenBiryani])
+  assert.equal(first.result.created_items, 1)
+  assert.equal(first.result.created_variants, 3)
+  const second = applyImportBatch(first.catalog, [chickenBiryani])
+  assert.equal(second.catalog.items.length, 1)
+  assert.equal(second.catalog.items[0].variants.length, 3)
+  assert.equal(second.result.created_items, 0)
+  assert.equal(second.result.created_variants, 0)
+  assert.equal(second.result.skipped_items, 1)
+  assert.equal(second.result.skipped_variants, 3)
+  assert.equal(second.result.conflicts, 0)
+})
+
+test('partial re-import adds only the missing named variant', () => {
+  const existing = {
+    name: 'Chicken Biryani',
+    category: 'Biryani',
+    price: 180,
+    variants: [
+      { name: 'Quarter', price: 180, is_available: true },
+      { name: 'Full', price: 420, is_available: true },
+    ],
+  }
+  const incoming = {
+    name: 'Chicken Biryani',
+    category: 'Biryani',
+    price: 180,
+    variants: [
+      { name: 'Quarter', price: 180, is_available: true },
+      { name: 'Half', price: 280, is_available: true },
+      { name: 'Full', price: 420, is_available: true },
+    ],
+  }
+  const result = applyImportedItem(existing, incoming)
+  assert.equal(result.action, 'update')
+  assert.equal(result.createdItems, 0)
+  assert.equal(result.createdVariants, 1)
+  assert.equal(result.skippedVariants, 2)
+  assert.deepEqual(
+    result.item.variants.map((row) => row.name),
+    ['Quarter', 'Full', 'Half'],
+  )
+})
+
+test('price conflict keeps the existing price and reports the mismatch', () => {
+  const existing = {
+    name: 'Chicken Biryani',
+    category: 'Biryani',
+    price: 180,
+    variants: [{ name: 'Full', price: 420, is_available: true }],
+  }
+  const incoming = {
+    name: 'Chicken Biryani',
+    category: 'Biryani',
+    price: 199,
+    variants: [{ name: 'Full', price: 450, is_available: true }],
+  }
+  const merged = mergeImportedVariants(existing.variants, incoming.variants)
+  assert.equal(merged.created, 0)
+  assert.equal(merged.conflicts.length, 1)
+  assert.equal(merged.variants[0].price, 420)
+  const result = applyImportedItem(existing, incoming)
+  assert.equal(result.item.variants[0].price, 420)
+  assert.equal(result.conflicts[0].existing, 420)
+  assert.equal(result.conflicts[0].incoming, 450)
+})
+
+test('single-price conflict does not overwrite the stored price', () => {
+  const existing = { name: 'Masala Dosa', category: 'South Indian', price: 120, variants: [] }
+  const incoming = { name: 'Masala Dosa', category: 'South Indian', price: 140, variants: [] }
+  const result = applyImportedItem(existing, incoming)
+  assert.equal(result.item.price, 120)
+  assert.equal(result.conflicts.length, 1)
+  assert.equal(result.conflicts[0].existing, 120)
+  assert.equal(result.conflicts[0].incoming, 140)
+})
+
+test('formatImportSuccess includes restaurant, counts and completion time', () => {
+  const message = formatImportSuccess(
+    {
+      created_items: 12,
+      created_variants: 8,
+      skipped_items: 40,
+      conflicts: 2,
+      failed_rows: 1,
+    },
+    { restaurantName: 'Sample Kitchen', completedAt: '28 Oct 2026, 10:15' },
+  )
+  assert.match(message, /completed successfully/)
+  assert.match(message, /Sample Kitchen/)
+  assert.match(message, /12 items created/)
+  assert.match(message, /8 variants created/)
+  assert.match(message, /40 existing items skipped/)
+  assert.match(message, /2 conflicts/)
+  assert.match(message, /1 failed rows/)
+  assert.match(message, /28 Oct 2026, 10:15/)
 })

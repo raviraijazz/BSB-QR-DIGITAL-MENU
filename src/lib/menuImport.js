@@ -430,3 +430,170 @@ export function summarizeImport({ rows = [], errors = [] } = {}) {
     categories: new Set(rows.map((r) => r.category)).size,
   }
 }
+
+export function normalizeImportName(value) {
+  return String(value || '').trim().toLowerCase()
+}
+
+export function moneyAmount(value) {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < 0) return null
+  return Math.round(n * 100) / 100
+}
+
+export function newImportRequestId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `import-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function variantList(value) {
+  return Array.isArray(value) ? value : []
+}
+
+function findVariantIndex(variants, name) {
+  const key = normalizeImportName(name)
+  return variantList(variants).findIndex((row) => normalizeImportName(row?.name) === key)
+}
+
+export function mergeImportedVariants(existingVariants, incomingVariants) {
+  const next = variantList(existingVariants).map((row) => ({ ...row }))
+  let created = 0
+  let skipped = 0
+  const conflicts = []
+  for (const incoming of variantList(incomingVariants)) {
+    const name = String(incoming?.name || '').trim()
+    if (!name) continue
+    const price = moneyAmount(incoming.price)
+    if (price == null) continue
+    const index = findVariantIndex(next, name)
+    if (index === -1) {
+      next.push({
+        name,
+        price,
+        is_available: incoming.is_available !== false,
+      })
+      created += 1
+      continue
+    }
+    const current = moneyAmount(next[index].price)
+    if (current === price) skipped += 1
+    else conflicts.push({ name, existing: current, incoming: price })
+  }
+  return { variants: next, created, skipped, conflicts }
+}
+
+export function applyImportedItem(existing, incoming) {
+  const incomingVariants = variantList(incoming?.variants).filter((row) => String(row?.name || '').trim())
+  if (!existing) {
+    return {
+      action: 'create',
+      item: {
+        ...incoming,
+        variants: incomingVariants,
+      },
+      createdItems: 1,
+      skippedItems: 0,
+      createdVariants: incomingVariants.length,
+      skippedVariants: 0,
+      conflicts: [],
+    }
+  }
+  const merged = mergeImportedVariants(existing.variants, incomingVariants)
+  const conflicts = merged.conflicts.slice()
+  if (!incomingVariants.length) {
+    const existingHasVariants = variantList(existing.variants).some((row) => String(row?.name || '').trim())
+    if (!existingHasVariants) {
+      const existingPrice = moneyAmount(existing.price)
+      const incomingPrice = moneyAmount(incoming.price)
+      if (existingPrice != null && incomingPrice != null && existingPrice !== incomingPrice) {
+        conflicts.push({ name: incoming.name || 'item', existing: existingPrice, incoming: incomingPrice })
+      }
+    }
+  }
+  return {
+    action: merged.created ? 'update' : 'skip',
+    item: {
+      ...existing,
+      variants: merged.variants,
+    },
+    createdItems: 0,
+    skippedItems: 1,
+    createdVariants: merged.created,
+    skippedVariants: merged.skipped,
+    conflicts,
+  }
+}
+
+export function applyImportBatch(catalog, incomingRows) {
+  const categories = new Map((catalog?.categories || []).map((row) => [normalizeImportName(row.name), { ...row }]))
+  const items = (catalog?.items || []).map((row) => ({
+    ...row,
+    variants: variantList(row.variants).map((variant) => ({ ...variant })),
+  }))
+  let createdCategories = 0
+  let createdItems = 0
+  let skippedItems = 0
+  let createdVariants = 0
+  let skippedVariants = 0
+  let failedRows = 0
+  const conflicts = []
+
+  for (const incoming of incomingRows || []) {
+    const categoryName = String(incoming?.category || '').trim()
+    const name = String(incoming?.name || '').trim()
+    const price = moneyAmount(incoming?.price)
+    if (!categoryName || !name || price == null) {
+      failedRows += 1
+      continue
+    }
+    const catKey = normalizeImportName(categoryName)
+    if (!categories.has(catKey)) {
+      categories.set(catKey, { name: categoryName })
+      createdCategories += 1
+    }
+    const index = items.findIndex(
+      (row) =>
+        normalizeImportName(row.category) === catKey && normalizeImportName(row.name) === normalizeImportName(name),
+    )
+    const result = applyImportedItem(index === -1 ? null : items[index], {
+      ...incoming,
+      name,
+      category: categoryName,
+      price,
+    })
+    createdItems += result.createdItems
+    skippedItems += result.skippedItems
+    createdVariants += result.createdVariants
+    skippedVariants += result.skippedVariants
+    conflicts.push(...result.conflicts)
+    if (index === -1) items.push(result.item)
+    else items[index] = result.item
+  }
+
+  return {
+    catalog: { categories: [...categories.values()], items },
+    result: {
+      created_categories: createdCategories,
+      created_items: createdItems,
+      created_variants: createdVariants,
+      skipped_items: skippedItems,
+      skipped_variants: skippedVariants,
+      skipped: skippedItems + failedRows,
+      conflicts: conflicts.length,
+      failed_rows: failedRows,
+    },
+  }
+}
+
+export function formatImportSuccess(result, { restaurantName, completedAt } = {}) {
+  const createdItems = Number(result?.created_items) || 0
+  const createdVariants = Number(result?.created_variants) || 0
+  const skippedItems = Number(result?.skipped_items) || 0
+  const conflicts = Number(result?.conflicts) || 0
+  const failedRows = Number(result?.failed_rows) || 0
+  const when = completedAt || result?.completed_at || ''
+  const restaurant = restaurantName || result?.restaurant_name || 'selected restaurant'
+  return `Menu import completed successfully for ${restaurant}. ${createdItems} items created, ${createdVariants} variants created, ${skippedItems} existing items skipped, ${conflicts} conflicts, ${failedRows} failed rows.${when ? ` Completed ${when}.` : ''}`
+}

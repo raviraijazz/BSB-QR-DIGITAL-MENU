@@ -193,8 +193,12 @@ export function manageAccount(restaurantId, targetUserId, accountType, action, r
   })
 }
 
-export function importMenu(restaurantId, rows) {
-  return rpc('platform_import_menu', { p_restaurant_id: restaurantId, p_rows: rows })
+export function importMenu(restaurantId, rows, requestId = '') {
+  return rpc('platform_import_menu', {
+    p_restaurant_id: restaurantId,
+    p_rows: rows,
+    p_request_id: requestId || '',
+  })
 }
 
 export function listAudit({ limit = 50, offset = 0 } = {}) {
