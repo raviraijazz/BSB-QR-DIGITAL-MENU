@@ -2,12 +2,15 @@ import { Link, Outlet, useNavigate } from 'react-router-dom'
 import Alert from '../components/Alert'
 import Button from '../components/Button'
 import Spinner from '../components/Spinner'
+import StaffMaintenanceBanner from '../components/StaffMaintenanceBanner'
 import { useAuth } from '../hooks/useAuth'
 import { useWaiter } from '../hooks/useWaiter'
+import { usePlatformSettings } from '../hooks/usePlatformSettings'
 
 export default function WaiterLayout() {
   const { user, signOut } = useAuth()
   const { waiter, restaurant, tables, loading, error } = useWaiter()
+  const { settings } = usePlatformSettings()
   const navigate = useNavigate()
 
   async function handleSignOut() {
@@ -48,7 +51,7 @@ export default function WaiterLayout() {
       <header className="border-b border-line bg-card">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="min-w-0">
-            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">BSB Digital Menu</p>
+            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">{settings.display_name}</p>
             <p className="truncate font-display text-lg leading-tight">{restaurant?.name || 'Restaurant'}</p>
             <p className="mt-0.5 truncate text-sm text-muted">
               {waiter.full_name} · <span className="font-mono">{waiter.waiter_id}</span>
@@ -65,6 +68,7 @@ export default function WaiterLayout() {
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+        <StaffMaintenanceBanner />
         <Outlet context={{ user, waiter, restaurant, tables, error }} />
       </main>
     </div>

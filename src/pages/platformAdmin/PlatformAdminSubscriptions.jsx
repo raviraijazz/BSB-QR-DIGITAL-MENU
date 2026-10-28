@@ -6,7 +6,7 @@ import EmptyState from '../../components/EmptyState'
 import {
   assignSubscription,
   getSubscriptionSettings,
-  listPlatformRestaurants,
+  listRestaurantSubscriptions,
   listSubscriptionAssignments,
   listSubscriptionPlans,
   setSubscriptionPlanStatus,
@@ -23,9 +23,12 @@ import {
 import {
   BILLING_CYCLES,
   VALIDITY_DURATION_OPTIONS,
+  assignmentConfirmed,
   assignmentPayload,
   billingCycleLabel,
   buildAssignmentPreview,
+  currentPlanLabel,
+  currentSubscriptionFromRow,
   durationIdFromDays,
   featureLines,
   planStatusLabel,
@@ -274,10 +277,15 @@ function AssignDrawer({ open, restaurants, plans, selectedId, onClose, onAssigne
     }
     setBusy(true)
     setError('')
-    const { error: nextError } = await assignSubscription(assignmentPayload(previewResult.preview, note))
+    const payload = assignmentPayload(previewResult.preview, note)
+    const { data, error: nextError } = await assignSubscription(payload)
     setBusy(false)
     if (nextError) {
       setError(nextError.message)
+      return
+    }
+    if (!assignmentConfirmed(data, payload.p_restaurant_id, payload.p_plan_id)) {
+      setError('Assignment was not confirmed by the database. Reload and try again.')
       return
     }
     onAssigned()
@@ -314,7 +322,7 @@ function AssignDrawer({ open, restaurants, plans, selectedId, onClose, onAssigne
               <p>
                 Access <StatusBadge status={restaurant.status} /> · {remainingDaysLabel(restaurant.remaining_days)}
               </p>
-              <p className="mt-1">Current plan: {restaurant.plan_name || 'None'}</p>
+              <p className="mt-1">Current plan: {currentPlanLabel(restaurant)}</p>
               <p>
                 Validity: {restaurant.valid_from ? formatDate(restaurant.valid_from) : '—'} →{' '}
                 {restaurant.valid_until ? formatDate(restaurant.valid_until) : 'No expiry'}
@@ -512,14 +520,15 @@ export default function PlatformAdminSubscriptions() {
     setError('')
     const [planResult, restaurantResult, settingsResult] = await Promise.all([
       listSubscriptionPlans(false),
-      listPlatformRestaurants({ pageSize: 100 }),
+      listRestaurantSubscriptions(),
       getSubscriptionSettings(),
     ])
     if (planResult.error || restaurantResult.error || settingsResult.error) {
       setError(planResult.error?.message || restaurantResult.error?.message || settingsResult.error?.message)
     }
     setPlans(planResult.data || [])
-    setRestaurants(restaurantResult.data?.items || [])
+    const rows = Array.isArray(restaurantResult.data) ? restaurantResult.data : []
+    setRestaurants(rows.map(currentSubscriptionFromRow).filter(Boolean))
     const nextSettings = Array.isArray(settingsResult.data) ? settingsResult.data[0] : settingsResult.data
     setSettings(nextSettings || null)
     setDefaultPlanId(nextSettings?.default_plan_id || '')
@@ -787,7 +796,7 @@ export default function PlatformAdminSubscriptions() {
                       <p className="text-xs text-slate-400">{row.owner_username || 'No owner username'}</p>
                     </td>
                     <td className="px-3 py-3 text-slate-600">
-                      {row.plan_name || 'None'}
+                      {currentPlanLabel(row)}
                       {row.plan_price_inr != null && row.plan_name ? (
                         <p className="text-xs text-slate-400">{formatMoney(row.plan_price_inr)}</p>
                       ) : null}

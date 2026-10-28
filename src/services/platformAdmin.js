@@ -233,6 +233,10 @@ export function listSubscriptionAssignments(restaurantId) {
   return rpc('platform_list_assignments', { p_restaurant_id: restaurantId })
 }
 
+export function listRestaurantSubscriptions() {
+  return rpc('platform_list_restaurant_subscriptions')
+}
+
 export function listSubscriptionInvoices({
   search = '',
   planId = null,
@@ -317,4 +321,29 @@ export function revokeAppSession(id, reason = '') {
 
 export function revokeUserSessions(userId, reason = '') {
   return rpc('platform_revoke_user_sessions', { p_user_id: userId, p_reason: reason })
+}
+
+export function getPlatformSettings() {
+  return rpc('platform_get_settings')
+}
+
+export function setPlatformSettings(settings, reason = '') {
+  return rpc('platform_set_settings', { p_settings: settings, p_reason: reason })
+}
+
+export function listIntegrationActivity({ provider = '', limit = 50, offset = 0 } = {}) {
+  return rpc('platform_list_integration_activity', {
+    p_provider: provider || '',
+    p_limit: limit,
+    p_offset: offset,
+  })
+}
+
+export function recordIntegrationTest({ provider, ok, message = '', rowCount = null }) {
+  return rpc('platform_record_integration_test', {
+    p_provider: provider,
+    p_ok: Boolean(ok),
+    p_message: message || '',
+    p_row_count: rowCount,
+  })
 }

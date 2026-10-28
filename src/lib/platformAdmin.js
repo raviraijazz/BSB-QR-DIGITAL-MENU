@@ -8,6 +8,8 @@ export const PLATFORM_ADMIN_AUDIT = '/platform-admin/audit'
 export const PLATFORM_ADMIN_REPORTS = '/platform-admin/reports'
 export const PLATFORM_ADMIN_ACCOUNT = '/platform-admin/account'
 export const PLATFORM_ADMIN_SESSIONS = '/platform-admin/sessions'
+export const PLATFORM_ADMIN_SETTINGS = '/platform-admin/settings'
+export const PLATFORM_ADMIN_INTEGRATIONS = '/platform-admin/integrations'
 
 // Only implemented routes use `to`. Everything else is a non-interactive
 // "Soon" item so we never ship fake working pages.
@@ -47,8 +49,8 @@ export const PLATFORM_NAV = [
     items: [
       { to: PLATFORM_ADMIN_ACCOUNT, label: 'Account & Security', icon: 'settings' },
       { to: PLATFORM_ADMIN_SESSIONS, label: 'Session Management', icon: 'history' },
-      { label: 'Global Settings', icon: 'settings', planned: true },
-      { label: 'Integrations', icon: 'link', planned: true },
+      { to: PLATFORM_ADMIN_SETTINGS, label: 'Global Settings', icon: 'settings' },
+      { to: PLATFORM_ADMIN_INTEGRATIONS, label: 'Integrations', icon: 'link' },
       { label: 'System Logs', icon: 'history', planned: true },
       { label: 'Support & Maintenance', icon: 'support', planned: true },
     ],

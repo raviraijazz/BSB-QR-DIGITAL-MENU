@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import NavIcon from '../components/NavIcon'
 import RestaurantSwitcher from '../components/RestaurantSwitcher'
+import StaffMaintenanceBanner from '../components/StaffMaintenanceBanner'
 import { useAuth } from '../hooks/useAuth'
 import { useRestaurant } from '../hooks/useRestaurant'
 import { isTableWisePath, TABLE_WISE_HOME, TABLE_WISE_MODULES } from '../lib/tableWiseNav'
@@ -159,6 +160,7 @@ export default function DashboardLayout() {
           <span className="w-10" />
         </div>
         <div className="px-4 py-5 sm:px-7">
+          <StaffMaintenanceBanner />
           <Outlet context={{ user, restaurants, restaurant, loading, refresh, setRestaurant, selectRestaurant }} />
         </div>
       </div>

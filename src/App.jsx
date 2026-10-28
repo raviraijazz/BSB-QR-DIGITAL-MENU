@@ -8,6 +8,7 @@ import SessionGuard from './components/SessionGuard'
 import Spinner from './components/Spinner'
 import { AuthProvider } from './hooks/useAuth'
 import { PlatformAdminProvider } from './hooks/usePlatformAdmin'
+import { PlatformSettingsProvider } from './hooks/usePlatformSettings'
 import { WaiterProvider } from './hooks/useWaiter'
 import DashboardLayout from './layouts/DashboardLayout'
 import FounderSupportLayout from './layouts/FounderSupportLayout'
@@ -52,6 +53,8 @@ const PlatformAdminBilling = lazy(() => import('./pages/platformAdmin/PlatformAd
 const PlatformAdminReports = lazy(() => import('./pages/platformAdmin/PlatformAdminReports'))
 const PlatformAdminAudit = lazy(() => import('./pages/platformAdmin/PlatformAdminAudit'))
 const PlatformAdminSessions = lazy(() => import('./pages/platformAdmin/PlatformAdminSessions'))
+const PlatformAdminSettings = lazy(() => import('./pages/platformAdmin/PlatformAdminSettings'))
+const PlatformAdminIntegrations = lazy(() => import('./pages/platformAdmin/PlatformAdminIntegrations'))
 const PlatformAdminPlanned = lazy(() => import('./pages/platformAdmin/PlatformAdminPlanned'))
 const SupportOverview = lazy(() => import('./pages/dashboard/Overview'))
 const SupportCategories = lazy(() => import('./pages/dashboard/Categories'))
@@ -67,6 +70,7 @@ const SupportReports = lazy(() => import('./pages/dashboard/Reports'))
 export default function App() {
   return (
     <AuthProvider>
+      <PlatformSettingsProvider>
       <BrowserRouter>
         <PlatformAdminProvider>
           <SessionGuard>
@@ -89,6 +93,8 @@ export default function App() {
                   <Route path="audit" element={<PlatformAdminAudit />} />
                   <Route path="account" element={<PlatformAdminAccount />} />
                   <Route path="sessions" element={<PlatformAdminSessions />} />
+                  <Route path="settings" element={<PlatformAdminSettings />} />
+                  <Route path="integrations" element={<PlatformAdminIntegrations />} />
                   <Route path="*" element={<PlatformAdminPlanned />} />
                 </Route>
                 {/* Founder support session opens the real owner dashboard for
@@ -162,6 +168,7 @@ export default function App() {
           </SessionGuard>
         </PlatformAdminProvider>
       </BrowserRouter>
+      </PlatformSettingsProvider>
     </AuthProvider>
   )
 }

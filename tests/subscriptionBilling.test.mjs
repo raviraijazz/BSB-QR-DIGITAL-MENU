@@ -63,6 +63,15 @@ test('validateInvoiceInput requires restaurant, plan, and due date order', () =>
   assert.equal(
     validateInvoiceInput({
       restaurant: { id: 'r1', plan_id: 'p1' },
+      plan: { id: 'p2', price_inr: 10 },
+      invoiceDate: '2026-01-01',
+      dueDate: '2026-01-02',
+    }),
+    'Invoice plan must match the current assigned plan',
+  )
+  assert.equal(
+    validateInvoiceInput({
+      restaurant: { id: 'r1', plan_id: 'p1' },
       plan: { id: 'p1', price_inr: 10 },
       invoiceDate: '2026-01-10',
       dueDate: '2026-01-01',

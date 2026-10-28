@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
-
-const WHATSAPP = 'https://wa.me/919721450099'
-const EMAIL = 'bsbagency4u@gmail.com'
+import { usePlatformSettings } from '../hooks/usePlatformSettings'
+import { signupAllowed, whatsappHref } from '../lib/platformSettings'
 
 const demoItems = [
   {
@@ -110,6 +109,11 @@ function QrMark() {
 }
 
 export default function Home() {
+  const { settings } = usePlatformSettings()
+  const canSignup = signupAllowed(settings)
+  const email = settings.support_email
+  const whatsapp = whatsappHref(settings.support_whatsapp)
+  const phone = settings.support_phone
   return (
     <div className="text-ink">
       <section className="relative overflow-hidden">
@@ -124,12 +128,21 @@ export default function Home() {
               One QR code. One beautiful menu. Update it anytime.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link
-                to="/signup"
-                className="rounded-full bg-forest px-6 py-3 text-center text-sm font-medium text-white transition hover:bg-forest-deep"
-              >
-                Create Your Menu
-              </Link>
+              {canSignup ? (
+                <Link
+                  to="/signup"
+                  className="rounded-full bg-forest px-6 py-3 text-center text-sm font-medium text-white transition hover:bg-forest-deep"
+                >
+                  Create Your Menu
+                </Link>
+              ) : (
+                <Link
+                  to="/login"
+                  className="rounded-full bg-forest px-6 py-3 text-center text-sm font-medium text-white transition hover:bg-forest-deep"
+                >
+                  Owner login
+                </Link>
+              )}
               <a
                 href="#demo"
                 className="rounded-full border border-[#d9d0c3] bg-white px-6 py-3 text-center text-sm font-medium transition hover:border-forest hover:text-forest"
@@ -337,12 +350,21 @@ export default function Home() {
             Create a beautiful digital menu for your restaurant and share it with one QR code.
           </p>
           <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Link
-              to="/signup"
-              className="inline-flex rounded-full bg-[#f6f1ea] px-6 py-3 text-sm font-medium text-forest transition hover:bg-white"
-            >
-              Create Your Menu
-            </Link>
+            {canSignup ? (
+              <Link
+                to="/signup"
+                className="inline-flex rounded-full bg-[#f6f1ea] px-6 py-3 text-sm font-medium text-forest transition hover:bg-white"
+              >
+                Create Your Menu
+              </Link>
+            ) : (
+              <Link
+                to="/login"
+                className="inline-flex rounded-full bg-[#f6f1ea] px-6 py-3 text-sm font-medium text-forest transition hover:bg-white"
+              >
+                Owner login
+              </Link>
+            )}
             <a
               href="#demo"
               className="inline-flex rounded-full border border-[#d5cbb8] px-6 py-3 text-sm font-medium text-[#f6f1ea] transition hover:bg-white/10"
@@ -359,14 +381,15 @@ export default function Home() {
         <p className="mt-2 max-w-lg text-sm text-stone-600">
           Reach us by email or WhatsApp if you need a hand setting up your menu.
         </p>
+        {settings.support_hours ? <p className="mt-1 text-sm text-stone-500">{settings.support_hours}</p> : null}
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          <a href={`mailto:${EMAIL}`} className="rounded-3xl border border-[#ece7df] bg-white px-5 py-5 transition hover:border-forest">
+          <a href={`mailto:${email}`} className="rounded-3xl border border-[#ece7df] bg-white px-5 py-5 transition hover:border-forest">
             <p className="text-xs uppercase tracking-wider text-stone-500">Email</p>
-            <p className="mt-1 font-medium">{EMAIL}</p>
+            <p className="mt-1 font-medium">{email}</p>
           </a>
-          <a href={WHATSAPP} target="_blank" rel="noreferrer" className="rounded-3xl border border-[#ece7df] bg-white px-5 py-5 transition hover:border-forest">
+          <a href={whatsapp} target="_blank" rel="noreferrer" className="rounded-3xl border border-[#ece7df] bg-white px-5 py-5 transition hover:border-forest">
             <p className="text-xs uppercase tracking-wider text-stone-500">WhatsApp</p>
-            <p className="mt-1 font-medium">+91 97214 50099</p>
+            <p className="mt-1 font-medium">{phone}</p>
           </a>
         </div>
       </section>
@@ -374,8 +397,8 @@ export default function Home() {
       <footer className="border-t border-[#ece7df] bg-white">
         <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-3">
           <div>
-            <p className="font-display text-lg">BSB Digital Menu</p>
-            <p className="mt-2 text-sm text-stone-600">Simple digital menus for modern restaurants.</p>
+            <p className="font-display text-lg">{settings.display_name}</p>
+            <p className="mt-2 text-sm text-stone-600">{settings.tagline}</p>
           </div>
           <div>
             <p className="text-xs uppercase tracking-wider text-stone-500">Links</p>
@@ -386,21 +409,21 @@ export default function Home() {
               <a href="#demo" className="hover:text-forest">Demo</a>
               <a href="#contact" className="hover:text-forest">Contact</a>
               <Link to="/login" className="hover:text-forest">Login</Link>
-              <Link to="/signup" className="hover:text-forest">Create Your Menu</Link>
+              {canSignup ? <Link to="/signup" className="hover:text-forest">Create Your Menu</Link> : null}
             </div>
           </div>
           <div>
             <p className="text-xs uppercase tracking-wider text-stone-500">Support</p>
             <div className="mt-3 flex flex-col gap-2 text-sm">
-              <a href={`mailto:${EMAIL}`} className="hover:text-forest">{EMAIL}</a>
-              <a href={WHATSAPP} target="_blank" rel="noreferrer" className="hover:text-forest">
-                WhatsApp: +91 97214 50099
+              <a href={`mailto:${email}`} className="hover:text-forest">{email}</a>
+              <a href={whatsapp} target="_blank" rel="noreferrer" className="hover:text-forest">
+                WhatsApp: {phone}
               </a>
             </div>
           </div>
         </div>
         <p className="border-t border-[#ece7df] px-4 py-4 text-center text-xs text-stone-500">
-          © 2026 BSB Digital Menu. All rights reserved.
+          © 2026 {settings.display_name}. All rights reserved.
         </p>
       </footer>
     </div>

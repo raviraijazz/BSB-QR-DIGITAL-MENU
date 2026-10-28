@@ -8,7 +8,7 @@ import {
   createSubscriptionInvoice,
   getSubscriptionBillingSummary,
   getSubscriptionInvoice,
-  listPlatformRestaurants,
+  listRestaurantSubscriptions,
   listSubscriptionInvoices,
   listSubscriptionPlans,
   recordSubscriptionPayment,
@@ -23,8 +23,12 @@ import {
 } from '../../lib/platformAdmin'
 import {
   VALIDITY_DURATION_OPTIONS,
+  billingCycleLabel,
   buildAssignmentPreview,
+  currentPlanLabel,
+  currentSubscriptionFromRow,
   durationIdFromDays,
+  planFromRestaurant,
   toDateInputUtc,
   todayUtcDate,
 } from '../../lib/subscriptionPlans'
@@ -93,7 +97,7 @@ function InvoiceDrawer({ open, restaurants, plans, initialRestaurantId, onClose,
   }, [open, initialRestaurantId])
 
   const restaurant = restaurants.find((row) => row.id === restaurantId)
-  const plan = plans.find((row) => row.id === restaurant?.plan_id)
+  const plan = planFromRestaurant(restaurant, plans)
   const previewResult = useMemo(
     () => (restaurant ? buildInvoicePreview({ restaurant, plan, invoiceDate, dueDate, note }) : { error: '', preview: null }),
     [restaurant, plan, invoiceDate, dueDate, note],
@@ -142,11 +146,35 @@ function InvoiceDrawer({ open, restaurants, plans, initialRestaurantId, onClose,
               {restaurants.map((row) => (
                 <option key={row.id} value={row.id}>
                   {row.name || 'Unnamed restaurant'}
-                  {row.plan_name ? ` — ${row.plan_name}` : ' — no plan'}
+                  {row.plan_id ? ` — ${currentPlanLabel(row)}` : ' — no plan'}
                 </option>
               ))}
             </select>
           </label>
+          {restaurant && !restaurant.plan_id ? (
+            <p className="text-sm text-slate-600">
+              This restaurant has no current plan.{' '}
+              <Link
+                to={`/platform-admin/subscriptions?restaurant=${restaurant.id}`}
+                className="text-blue-700 hover:underline"
+              >
+                Assign a plan first
+              </Link>
+              .
+            </p>
+          ) : null}
+          {restaurant && plan ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+              <p className="font-medium text-slate-800">{plan.name}</p>
+              <p>
+                {formatMoney(plan.price_inr)} · {billingCycleLabel(plan.billing_cycle, plan.custom_cycle_days)}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                Validity {restaurant.valid_from ? formatDate(restaurant.valid_from) : '—'} →{' '}
+                {restaurant.valid_until ? formatDate(restaurant.valid_until) : 'No expiry'}
+              </p>
+            </div>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs font-medium text-slate-500">
               Invoice date
@@ -705,7 +733,7 @@ export default function PlatformAdminBilling() {
       }),
       getSubscriptionBillingSummary({ from, to }),
       listSubscriptionPlans(false),
-      listPlatformRestaurants({ pageSize: 100 }),
+      listRestaurantSubscriptions(),
     ])
     if (invoiceResult.error || summaryResult.error || planResult.error || restaurantResult.error) {
       setError(
@@ -720,7 +748,8 @@ export default function PlatformAdminBilling() {
     setTotal(Number(rows[0]?.total_count) || 0)
     setSummary(unwrap(summaryResult.data))
     setPlans(planResult.data || [])
-    setRestaurants(restaurantResult.data?.items || [])
+    const restaurantRows = Array.isArray(restaurantResult.data) ? restaurantResult.data : []
+    setRestaurants(restaurantRows.map(currentSubscriptionFromRow).filter(Boolean))
     setLoading(false)
   }, [query, planId, status, method, from, to, page])
 

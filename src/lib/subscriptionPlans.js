@@ -327,3 +327,43 @@ export function assignmentPayload(preview, note) {
     p_note: String(note || '').trim(),
   }
 }
+
+export function currentSubscriptionFromRow(row) {
+  if (!row) return null
+  const planId = row.plan_id || null
+  return {
+    ...row,
+    plan_id: planId,
+    plan_name: planId ? String(row.plan_name || '') : '',
+    plan_price_inr: planId ? row.plan_price_inr : null,
+    plan_billing_cycle: planId ? row.plan_billing_cycle || '' : '',
+    plan_custom_cycle_days: planId ? row.plan_custom_cycle_days ?? null : null,
+    latest_assignment_id: planId ? row.latest_assignment_id || null : null,
+  }
+}
+
+export function currentPlanLabel(row) {
+  const name = String(row?.plan_name || '').trim()
+  return row?.plan_id && name ? name : 'None'
+}
+
+export function planFromRestaurant(restaurant, plans) {
+  if (!restaurant?.plan_id) return null
+  const fromCatalog = (plans || []).find((row) => row.id === restaurant.plan_id)
+  if (fromCatalog) return fromCatalog
+  if (!restaurant.plan_name) return null
+  return {
+    id: restaurant.plan_id,
+    name: restaurant.plan_name,
+    price_inr: restaurant.plan_price_inr,
+    billing_cycle: restaurant.plan_billing_cycle || '',
+    custom_cycle_days: restaurant.plan_custom_cycle_days ?? null,
+    status: 'active',
+  }
+}
+
+export function assignmentConfirmed(result, restaurantId, planId) {
+  const row = Array.isArray(result) ? result[0] : result
+  if (!row) return false
+  return row.restaurant_id === restaurantId && row.plan_id === planId
+}

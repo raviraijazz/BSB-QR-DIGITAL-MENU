@@ -39,6 +39,8 @@ const ACTION_LABELS = {
   session_policy_update: 'Session policies updated',
   session_revoke: 'Session terminated',
   session_revoke_user: 'Account sessions revoked',
+  platform_settings_update: 'Global settings updated',
+  integration_test: 'Integration connection tested',
 }
 
 export default function PlatformAdminAudit() {

@@ -6,11 +6,15 @@ import Field, { inputClass } from '../components/Field'
 import { authEmailFromUsername, friendlyAuthError, validateLogin } from '../lib/auth'
 import { takeSessionNotice } from '../lib/sessionPolicy'
 import { supabase } from '../lib/supabase'
+import { usePlatformSettings } from '../hooks/usePlatformSettings'
+import { signupAllowed } from '../lib/platformSettings'
 import { roleFromUser } from '../services/profiles'
 
 export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { settings } = usePlatformSettings()
+  const canSignup = signupAllowed(settings)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -84,9 +88,13 @@ export default function Login() {
           {busy ? 'Signing in...' : 'Log in'}
         </Button>
       </form>
-      <p className="mt-4 text-center text-sm text-muted">
-        New here? <Link to="/signup" className="text-ink underline">Create an account</Link>
-      </p>
+      {canSignup ? (
+        <p className="mt-4 text-center text-sm text-muted">
+          New here? <Link to="/signup" className="text-ink underline">Create an account</Link>
+        </p>
+      ) : (
+        <p className="mt-4 text-center text-sm text-muted">New restaurant registrations are currently closed.</p>
+      )}
       <p className="mt-2 text-center text-sm text-muted">
         Waiter? <Link to="/waiter/login" className="text-ink underline">Waiter login</Link>
       </p>

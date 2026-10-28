@@ -11,10 +11,14 @@ import {
   validateSignup,
 } from '../lib/auth'
 import { supabase } from '../lib/supabase'
+import { usePlatformSettings } from '../hooks/usePlatformSettings'
+import { registrationClosedMessage, signupAllowed } from '../lib/platformSettings'
 import { createProfile, isUsernameAvailable } from '../services/profiles'
 
 export default function Signup() {
   const navigate = useNavigate()
+  const { settings } = usePlatformSettings()
+  const canSignup = signupAllowed(settings)
   const [username, setUsername] = useState('')
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
@@ -27,6 +31,11 @@ export default function Signup() {
     const validation = validateSignup({ username, phone, password, confirmPassword })
     if (validation) {
       setError(validation)
+      return
+    }
+
+    if (!canSignup) {
+      setError(registrationClosedMessage(settings))
       return
     }
 
@@ -72,11 +81,34 @@ export default function Signup() {
     }
 
     if (data.user?.id) {
-      await createProfile(data.user.id, handle, 'owner')
+      const { error: profileError } = await createProfile(data.user.id, handle, 'owner')
+      if (profileError) {
+        await supabase.auth.signOut()
+        setBusy(false)
+        const msg = String(profileError.message || '')
+        setError(
+          /row-level security|violates|permission denied/i.test(msg)
+            ? registrationClosedMessage(settings)
+            : friendlyAuthError(profileError),
+        )
+        return
+      }
     }
 
     setBusy(false)
     navigate('/dashboard', { replace: true })
+  }
+
+  if (!canSignup) {
+    return (
+      <div className="mx-auto max-w-md px-4 py-16">
+        <h1 className="font-display text-3xl">Registrations closed</h1>
+        <p className="mt-2 text-sm text-muted">{registrationClosedMessage(settings)}</p>
+        <p className="mt-6 text-center text-sm text-muted">
+          Already have an account? <Link to="/login" className="text-ink underline">Log in</Link>
+        </p>
+      </div>
+    )
   }
 
   return (

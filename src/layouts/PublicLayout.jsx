@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { usePlatformSettings } from '../hooks/usePlatformSettings'
+import { signupAllowed } from '../lib/platformSettings'
 
 function accountPath(isOwner, isWaiter) {
   if (isWaiter) return '/waiter'
@@ -17,6 +19,8 @@ const nav = [
 
 export default function PublicLayout() {
   const { user, isOwner, isWaiter } = useAuth()
+  const { settings } = usePlatformSettings()
+  const canSignup = signupAllowed(settings)
   const appPath = accountPath(isOwner, isWaiter)
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
@@ -35,7 +39,7 @@ export default function PublicLayout() {
               BSB
             </span>
             <span className="font-display text-[1.05rem] leading-tight tracking-tight text-ink">
-              Digital Menu
+              {settings.display_name}
             </span>
           </Link>
           <nav className="hidden items-center gap-7 text-sm text-stone-600 lg:flex">
@@ -58,12 +62,14 @@ export default function PublicLayout() {
                 <Link to="/login" className="rounded-full px-3 py-2 text-sm text-stone-600 transition hover:text-ink">
                   Login
                 </Link>
-                <Link
-                  to="/signup"
-                  className="rounded-full bg-forest px-4 py-2 text-sm text-white transition hover:bg-forest-deep"
-                >
-                  Create Your Menu
-                </Link>
+                {canSignup ? (
+                  <Link
+                    to="/signup"
+                    className="rounded-full bg-forest px-4 py-2 text-sm text-white transition hover:bg-forest-deep"
+                  >
+                    Create Your Menu
+                  </Link>
+                ) : null}
               </>
             )}
           </div>
@@ -96,13 +102,15 @@ export default function PublicLayout() {
                   <Link to="/login" onClick={close} className="pt-2">
                     Login
                   </Link>
-                  <Link
-                    to="/signup"
-                    onClick={close}
-                    className="rounded-full bg-forest px-4 py-2.5 text-center text-white"
-                  >
-                    Create Your Menu
-                  </Link>
+                  {canSignup ? (
+                    <Link
+                      to="/signup"
+                      onClick={close}
+                      className="rounded-full bg-forest px-4 py-2.5 text-center text-white"
+                    >
+                      Create Your Menu
+                    </Link>
+                  ) : null}
                 </>
               )}
             </nav>

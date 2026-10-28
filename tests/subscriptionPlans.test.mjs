@@ -3,10 +3,14 @@ import assert from 'node:assert/strict'
 import {
   addCalendarMonths,
   addCalendarYears,
+  assignmentConfirmed,
   assignmentPayload,
   billingCycleLabel,
   buildAssignmentPreview,
   buildPlanUpsertArgs,
+  currentPlanLabel,
+  currentSubscriptionFromRow,
+  planFromRestaurant,
   computeValidUntil,
   durationFromOption,
   durationIdFromDays,
@@ -264,6 +268,34 @@ test('inactive plans and duplicate same-plan without validity change are rejecte
     }).error,
     /already on that plan/i,
   )
+})
+
+test('current plan comes from restaurants.plan_id, not assignment history', () => {
+  const yearly = {
+    id: 'paras',
+    name: 'PARAS RESTAURANT',
+    plan_id: 'plan-yearly',
+    plan_name: 'YEARLY',
+    plan_price_inr: 12999,
+    plan_billing_cycle: 'yearly',
+    latest_assignment_id: 'assign-yearly',
+  }
+  const none = currentSubscriptionFromRow({
+    id: 'other',
+    name: 'No plan',
+    plan_id: null,
+    plan_name: '',
+    latest_assignment_id: 'old-history-row',
+  })
+  assert.equal(currentPlanLabel(yearly), 'YEARLY')
+  assert.equal(currentPlanLabel(none), 'None')
+  assert.equal(none.plan_id, null)
+  assert.equal(none.latest_assignment_id, null)
+  assert.equal(assignmentConfirmed({ restaurant_id: 'paras', plan_id: 'plan-yearly' }, 'paras', 'plan-yearly'), true)
+  assert.equal(assignmentConfirmed([{ restaurant_id: 'paras', plan_id: 'other' }], 'paras', 'plan-yearly'), false)
+  assert.equal(assignmentConfirmed(null, 'paras', 'plan-yearly'), false)
+  assert.equal(planFromRestaurant(none, [{ id: 'plan-yearly', name: 'YEARLY' }]), null)
+  assert.equal(planFromRestaurant(yearly, [{ id: 'plan-yearly', name: 'YEARLY', price_inr: 12999 }]).name, 'YEARLY')
 })
 
 test('assignmentPayload only sends validity when the founder opted in', () => {

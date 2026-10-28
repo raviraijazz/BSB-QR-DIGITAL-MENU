@@ -5,11 +5,13 @@ import Button from '../../components/Button'
 import Field, { inputClass } from '../../components/Field'
 import { validateWaiterLogin } from '../../lib/auth'
 import { takeSessionNotice } from '../../lib/sessionPolicy'
+import { usePlatformSettings } from '../../hooks/usePlatformSettings'
 import { signInWaiter } from '../../services/waiterAuth'
 
 export default function WaiterLogin() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { settings } = usePlatformSettings()
   const [waiterId, setWaiterId] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -53,7 +55,7 @@ export default function WaiterLogin() {
 
   return (
     <div className="mx-auto max-w-md px-4 py-16">
-      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">BSB Digital Menu</p>
+      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">{settings.display_name}</p>
       <h1 className="mt-1 font-display text-3xl">Waiter Login</h1>
       <p className="mt-2 text-sm text-muted">Use your waiter ID and password. Restaurant is assigned automatically.</p>
       <form onSubmit={onSubmit} className="mt-8 space-y-4 rounded-2xl border border-line bg-card p-6">

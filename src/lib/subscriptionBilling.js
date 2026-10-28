@@ -75,8 +75,9 @@ export function deriveInvoiceStatus({ amount, paidAmount, dueDate, cancelled, to
 
 export function validateInvoiceInput({ restaurant, plan, invoiceDate, dueDate }) {
   if (!restaurant?.id) return 'Select a restaurant'
-  if (!plan?.id && !restaurant.plan_id) return 'Assign a plan before creating an invoice'
+  if (!restaurant.plan_id) return 'Assign a plan before creating an invoice'
   if (!plan?.id) return 'This restaurant has no plan assigned'
+  if (plan.id !== restaurant.plan_id) return 'Invoice plan must match the current assigned plan'
   const issued = String(invoiceDate || '').trim()
   const due = String(dueDate || '').trim()
   if (!/^\d{4}-\d{2}-\d{2}$/.test(issued)) return 'Invoice date is required'
