@@ -21,6 +21,42 @@
 -- Unique indexes are NOT added here: legacy duplicates from earlier imports
 -- would make them fail. A diagnostic query is included at the end.
 
+create or replace function public.platform_import_variant_name(p_name text)
+returns text
+language plpgsql
+immutable
+as $$
+declare
+  v text := lower(btrim(coalesce(p_name, '')));
+begin
+  v := btrim(regexp_replace(v, '\s*\((inr|rs|₹)\)\s*$', ''));
+  if v = '' or v in ('price', 'variant price', 'unit price', 'amount', 'rate', 'mrp', 'cost', 'notes', 'note', 'variant name') then
+    return '';
+  end if;
+  if v in ('quarter', 'qtr', '1/4', '1/4th') or v like 'quarter %' or v like 'quarter(%' or v like 'qtr %' then
+    return 'Quarter';
+  end if;
+  if v in ('half', '1/2', '1/2th') or v like 'half %' or v like 'half(%' then
+    return 'Half';
+  end if;
+  if v in ('full') or v like 'full %' or v like 'full(%' then
+    return 'Full';
+  end if;
+  if v in ('small', 'sm') or v like 'small %' then
+    return 'Small';
+  end if;
+  if v in ('medium', 'med') or v like 'medium %' then
+    return 'Medium';
+  end if;
+  if v in ('large', 'lg') or v like 'large %' then
+    return 'Large';
+  end if;
+  return btrim(coalesce(p_name, ''));
+end;
+$$;
+
+revoke all on function public.platform_import_variant_name(text) from public, anon;
+
 create or replace function public.platform_import_menu(
   p_restaurant_id uuid,
   p_rows jsonb,
@@ -136,12 +172,12 @@ begin
         v_price,
         coalesce((
           select jsonb_agg(jsonb_build_object(
-            'name', btrim(v.value->>'name'),
+            'name', public.platform_import_variant_name(v.value->>'name'),
             'price', (v.value->>'price')::numeric,
             'is_available', coalesce((v.value->>'is_available')::boolean, true)
           ))
           from jsonb_array_elements(v_incoming) v
-          where btrim(coalesce(v.value->>'name', '')) <> ''
+          where public.platform_import_variant_name(v.value->>'name') <> ''
             and (v.value->>'price') ~ '^[0-9]+(\.[0-9]+)?$'
         ), '[]'::jsonb),
         nullif(v_row->>'image_url', ''),
@@ -155,7 +191,7 @@ begin
       v_created_variants := v_created_variants + coalesce((
         select count(*)::int
         from jsonb_array_elements(v_incoming) v
-        where btrim(coalesce(v.value->>'name', '')) <> ''
+        where public.platform_import_variant_name(v.value->>'name') <> ''
           and (v.value->>'price') ~ '^[0-9]+(\.[0-9]+)?$'
       ), 0);
       continue;
@@ -175,7 +211,7 @@ begin
 
     for v_variant in select * from jsonb_array_elements(v_incoming)
     loop
-      v_variant_name := btrim(coalesce(v_variant->>'name', ''));
+      v_variant_name := public.platform_import_variant_name(v_variant->>'name');
       if v_variant_name = '' then
         continue;
       end if;
@@ -194,7 +230,7 @@ begin
       select e
       into v_match
       from jsonb_array_elements(v_next_variants) e
-      where lower(btrim(coalesce(e->>'name', ''))) = lower(v_variant_name)
+      where public.platform_import_variant_name(e->>'name') = v_variant_name
       limit 1;
 
       if v_match is null then
@@ -280,6 +316,7 @@ begin
     'conflicts', v_conflicts,
     'failed_rows', v_failed_rows,
     'conflict_samples', v_conflict_samples,
+    'no_changes', (v_created_items = 0 and v_created_variants = 0 and v_created_categories = 0 and v_conflicts = 0),
     'completed_at', now()
   );
 end;
@@ -313,3 +350,13 @@ grant execute on function public.platform_import_menu(uuid, jsonb, text) to auth
 -- group by r.name, m.id, m.name, lower(btrim(v->>'name'))
 -- having count(*) > 1
 -- order by copies desc, r.name, m.name;
+--
+-- Fake generic labels created when "Variant Price (INR)" was treated as a size:
+--
+-- select r.name as restaurant, m.name as item, v->>'name' as variant, v->>'price' as price
+-- from public.menu_items m
+-- join public.restaurants r on r.id = m.restaurant_id
+-- cross join lateral jsonb_array_elements(coalesce(m.variants, '[]'::jsonb)) v
+-- where public.platform_import_variant_name(v->>'name') = ''
+--    or lower(btrim(v->>'name')) like 'variant price%'
+-- order by r.name, m.name;

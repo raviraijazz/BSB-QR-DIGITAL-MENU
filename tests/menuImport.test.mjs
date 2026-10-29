@@ -5,12 +5,15 @@ import {
   applyImportBatch,
   applyImportedItem,
   buildRows,
+  canonicalVariantName,
+  detectHeaderRow,
   detectVariantColumns,
   formatImportSuccess,
   formatVariantsPreview,
   guessMapping,
   mergeImportedVariants,
   parseCsvText,
+  sizeNameFromHeader,
   summarizeImport,
 } from '../src/lib/menuImport.js'
 
@@ -341,6 +344,76 @@ test('single-price conflict does not overwrite the stored price', () => {
   assert.equal(result.conflicts.length, 1)
   assert.equal(result.conflicts[0].existing, 120)
   assert.equal(result.conflicts[0].incoming, 140)
+})
+
+test('detectHeaderRow prefers the real header and skips a duplicate header data row', () => {
+  const headers = [
+    'Item Name',
+    'Category',
+    'Food Type',
+    'Price (INR)',
+    'Quarter Price (INR)',
+    'Half Price (INR)',
+    'Full Price (INR)',
+    'Variant Name',
+    'Variant Price (INR)',
+  ]
+  const grid = [headers, headers, ['Butter Chicken', 'Chicken Curries', 'Non-Veg', '', '230', '330', '580', '', '']]
+  assert.equal(detectHeaderRow(grid), 0)
+  const mapping = guessMapping(grid[0])
+  const { rows, errors } = buildRows(grid, mapping, { headerRow: 0 })
+  assert.equal(errors.length, 0)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].name, 'Butter Chicken')
+  assert.deepEqual(
+    rows[0].variants.map((row) => `${row.name}:${row.price}`),
+    ['Quarter:230', 'Half:330', 'Full:580'],
+  )
+})
+
+test('Variant Price (INR) is not a named variant and Quarter Price maps to Quarter', () => {
+  const headers = ['Item Name', 'Category', 'Quarter Price (INR)', 'Half Price (INR)', 'Full Price (INR)', 'Variant Price (INR)']
+  const mapping = guessMapping(headers)
+  assert.equal(sizeNameFromHeader('Quarter Price (INR)'), 'Quarter')
+  assert.equal(sizeNameFromHeader('Variant Price (INR)'), '')
+  assert.deepEqual(mapping.variantColumns, [2, 3, 4])
+  assert.equal(mapping.variantPrice, 5)
+  const cols = detectVariantColumns(headers, mapping)
+  assert.deepEqual(
+    cols.map((col) => col.name),
+    ['Quarter', 'Half', 'Full'],
+  )
+})
+
+test('mutton Half/Full source rows stay one parent with two portion prices', () => {
+  const grid = [
+    ['Item Name', 'Category', 'Quarter Price (INR)', 'Half Price (INR)', 'Full Price (INR)', 'Variant Name', 'Variant Price (INR)'],
+    ['Dahi Gosht', 'Mutton Curries', '', '', '', 'Half (2 pcs.)', '290'],
+    ['Dahi Gosht', 'Mutton Curries', '', '', '', 'Full (4 pcs.)', '490'],
+  ]
+  const { rows, errors } = buildRows(grid, guessMapping(grid[0]))
+  assert.equal(errors.length, 0)
+  assert.equal(rows.length, 1)
+  assert.equal(canonicalVariantName('Half (2 pcs.)'), 'Half')
+  assert.equal(canonicalVariantName('Full (4 pcs.)'), 'Full')
+  assert.deepEqual(
+    rows[0].variants.map((row) => `${row.name}:${row.price}`),
+    ['Half:290', 'Full:490'],
+  )
+})
+
+test('repeat identical import reports no changes instead of a false success', () => {
+  const first = applyImportBatch({ categories: [], items: [] }, [chickenBiryani])
+  const second = applyImportBatch(first.catalog, [chickenBiryani])
+  const message = formatImportSuccess(
+    { ...second.result, no_changes: true },
+    { restaurantName: 'SHATWIK BHOJANALYA', completedAt: '29 Oct 2026, 10:59 am' },
+  )
+  assert.match(message, /No changes detected/)
+  assert.match(message, /already imported/)
+  assert.doesNotMatch(message, /completed successfully/)
+  assert.equal(second.result.created_items, 0)
+  assert.equal(second.result.created_variants, 0)
 })
 
 test('formatImportSuccess includes restaurant, counts and completion time', () => {

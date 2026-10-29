@@ -121,16 +121,111 @@ export function normalizeHeader(value) {
     .replace(/\s+/g, ' ')
 }
 
+const GENERIC_PRICE_LABELS = new Set([
+  'price',
+  'variant price',
+  'unit price',
+  'amount',
+  'rate',
+  'mrp',
+  'cost',
+  'notes',
+  'note',
+])
+
+export function stripCurrencySuffix(value) {
+  return normalizeHeader(value)
+    .replace(/\s*\((inr|rs|inr\.|₹)\)\s*$/g, '')
+    .replace(/\s+(inr|rs|₹)$/g, '')
+    .trim()
+}
+
 export function sizeNameFromHeader(value) {
-  const normalized = normalizeHeader(value)
-  if (!normalized || FOOD_TYPE_HEADERS.has(normalized)) return ''
+  const normalized = stripCurrencySuffix(value)
+  if (!normalized || FOOD_TYPE_HEADERS.has(normalized) || GENERIC_PRICE_LABELS.has(normalized)) return ''
   if (SIZE_ALIASES.has(normalized)) return SIZE_ALIASES.get(normalized)
   for (const [alias, name] of SIZE_ALIASES) {
-    if (normalized === `${alias} price` || normalized === `price ${alias}` || normalized === `${alias} (rs)`) {
+    if (
+      normalized === `${alias} price` ||
+      normalized === `price ${alias}` ||
+      normalized === `${alias} (rs)` ||
+      normalized.startsWith(`${alias} (`)
+    ) {
       return name
     }
   }
   return ''
+}
+
+export function canonicalVariantName(value) {
+  const sized = sizeNameFromHeader(value)
+  if (sized) return sized
+  const text = String(value || '').trim()
+  if (!text) return ''
+  const normalized = stripCurrencySuffix(text)
+  if (GENERIC_PRICE_LABELS.has(normalized)) return ''
+  for (const [alias, name] of SIZE_ALIASES) {
+    if (normalized === alias || normalized.startsWith(`${alias} `) || normalized.startsWith(`${alias}(`)) {
+      return name
+    }
+  }
+  return text
+}
+
+export function looksLikeHeaderRow(cells = []) {
+  const values = (cells || []).map((cell) => normalizeHeader(cell)).filter(Boolean)
+  if (values.length < 2) return false
+  let hits = 0
+  for (const value of values) {
+    const stripped = stripCurrencySuffix(value)
+    if (sizeNameFromHeader(value) || GENERIC_PRICE_LABELS.has(stripped)) {
+      hits += 1
+      continue
+    }
+    if (FOOD_TYPE_HEADERS.has(value) || value === 'notes' || value === 'note' || value === 'variant name') {
+      hits += 1
+      continue
+    }
+    const hinted = Object.values(HEADER_HINTS).some((hints) => hints.some((hint) => value === hint || value.startsWith(`${hint} `)))
+    if (hinted || value.includes('price') || value.includes('item name')) hits += 1
+  }
+  return hits >= 3 && hits >= Math.ceil(values.length * 0.5)
+}
+
+export function headerRowScore(cells = []) {
+  const mapping = guessMapping(cells)
+  let score = 0
+  if ((mapping.name ?? -1) >= 0) score += 6
+  if ((mapping.category ?? -1) >= 0) score += 5
+  if ((mapping.price ?? -1) >= 0) score += 2
+  if ((mapping.variant ?? -1) >= 0) score += 2
+  if ((mapping.food_type ?? -1) >= 0) score += 2
+  score += Array.isArray(mapping.variantColumns) ? mapping.variantColumns.length : 0
+  if (looksLikeHeaderRow(cells)) score += 4
+  return score
+}
+
+export function detectHeaderRow(grid = []) {
+  let bestIndex = 0
+  let bestScore = -1
+  const limit = Math.min(grid.length, 6)
+  for (let i = 0; i < limit; i += 1) {
+    const score = headerRowScore(grid[i] || [])
+    if (score > bestScore) {
+      bestScore = score
+      bestIndex = i
+    }
+  }
+  return bestIndex
+}
+
+export function detectVariantPriceColumn(headers = [], mapping = {}) {
+  const reserved = reservedIndexes(mapping)
+  return headers.findIndex((header, index) => {
+    if (reserved.has(index) || sizeNameFromHeader(header)) return false
+    const normalized = stripCurrencySuffix(header)
+    return normalized === 'variant price' || normalized === 'size price' || normalized === 'variant rate'
+  })
 }
 
 function reservedIndexes(mapping) {
@@ -161,13 +256,19 @@ export function resolveVariantColumns(headers, mapping = {}) {
     const reserved = reservedIndexes(mapping)
     const seen = new Set()
     const cols = []
-    for (const raw of mapping.variantColumns) {
-      const index = Number(raw)
+    for (const column of mapping.variantColumns) {
+      const index = Number(column)
       if (!Number.isInteger(index) || index < 0 || reserved.has(index) || seen.has(index)) continue
       seen.add(index)
       const header = headers?.[index]
-      const name = sizeNameFromHeader(header) || String(header || '').trim() || `Column ${index + 1}`
-      cols.push({ index, name })
+      const sized = sizeNameFromHeader(header)
+      const label = String(header || '').trim()
+      if (sized) {
+        cols.push({ index, name: sized })
+        continue
+      }
+      if (!label || GENERIC_PRICE_LABELS.has(stripCurrencySuffix(label))) continue
+      cols.push({ index, name: label })
     }
     return cols
   }
@@ -180,7 +281,14 @@ function findHeaderIndex(lowered, hints, used) {
     if (idx !== -1) return idx
   }
   for (const hint of hints) {
-    const idx = lowered.findIndex((h, i) => !used.has(i) && h.includes(hint) && !sizeNameFromHeader(h) && !FOOD_TYPE_HEADERS.has(h))
+    const idx = lowered.findIndex(
+      (h, i) =>
+        !used.has(i) &&
+        h.includes(hint) &&
+        !sizeNameFromHeader(h) &&
+        !FOOD_TYPE_HEADERS.has(h) &&
+        !GENERIC_PRICE_LABELS.has(stripCurrencySuffix(h)),
+    )
     if (idx !== -1) return idx
   }
   return -1
@@ -199,13 +307,27 @@ export function guessMapping(headers) {
         found = lowered.findIndex((h, i) => !used.has(i) && (h === 'veg' || h === 'type' || h.includes('food type')))
       }
     } else if (field.key === 'price') {
-      for (const hint of hints) {
-        const idx = lowered.findIndex((h, i) => !used.has(i) && h === hint && !sizeNameFromHeader(headers[i]))
-        if (idx !== -1) {
-          found = idx
-          break
+      found = lowered.findIndex(
+        (h, i) => !used.has(i) && stripCurrencySuffix(h) === 'price' && !sizeNameFromHeader(headers[i]),
+      )
+      if (found === -1) {
+        for (const hint of hints) {
+          const idx = lowered.findIndex((h, i) => !used.has(i) && h === hint && !sizeNameFromHeader(headers[i]))
+          if (idx !== -1) {
+            found = idx
+            break
+          }
         }
       }
+    } else if (field.key === 'variant') {
+      found = lowered.findIndex(
+        (h, i) =>
+          !used.has(i) &&
+          ['variant', 'variant name', 'size', 'portion', 'serving'].includes(stripCurrencySuffix(h)) &&
+          !sizeNameFromHeader(headers[i]) &&
+          !GENERIC_PRICE_LABELS.has(stripCurrencySuffix(h)),
+      )
+      if (found === -1) found = findHeaderIndex(lowered, hints, used)
     } else {
       found = findHeaderIndex(lowered, hints, used)
     }
@@ -213,6 +335,7 @@ export function guessMapping(headers) {
     if (found >= 0) used.add(found)
   }
   mapping.variantColumns = detectVariantColumns(headers, mapping).map((col) => col.index)
+  mapping.variantPrice = detectVariantPriceColumn(headers, mapping)
   return mapping
 }
 
@@ -249,7 +372,7 @@ function itemKey(category, name) {
 }
 
 function variantKey(name) {
-  return String(name || '').trim().toLowerCase()
+  return variantMatchKey(name)
 }
 
 function toStoredVariants(collected) {
@@ -283,13 +406,19 @@ export function buildRows(grid, mapping, { headerRow = 0, defaultCategory = '' }
   let lastName = ''
   let lastCategory = defaultCategory
 
+  const variantPriceIndex =
+    Number.isInteger(mapping.variantPrice) && mapping.variantPrice >= 0
+      ? mapping.variantPrice
+      : detectVariantPriceColumn(headers, mapping)
+
   dataRows.forEach((cells, index) => {
     const rowNumber = headerRow + index + 2
+    if (looksLikeHeaderRow(cells)) return
     const get = (key) => cell(cells, mapping[key])
     let name = get('name')
     let category = get('category')
     const rawPrice = get('price')
-    const variantName = get('variant')
+    const variantName = canonicalVariantName(get('variant'))
     const description = get('description')
     const foodRaw = get('food_type')
     const availableRaw = get('is_available')
@@ -309,19 +438,24 @@ export function buildRows(grid, mapping, { headerRow = 0, defaultCategory = '' }
       collected.push({ name: col.name, price })
     }
 
-    if (rawPrice !== '') {
+    const namedVariantPrice = parsePrice(cell(cells, variantPriceIndex))
+    if (variantName) {
+      let price = Number.isFinite(namedVariantPrice) ? namedVariantPrice : NaN
+      if (!Number.isFinite(price) && rawPrice !== '') price = parsePrice(rawPrice)
+      if (!Number.isFinite(price) || price < 0) {
+        rowErrors.push('Invalid price')
+      } else {
+        collected.push({ name: variantName, price })
+      }
+    } else if (rawPrice !== '') {
       const price = parsePrice(rawPrice)
       if (!Number.isFinite(price) || price < 0) {
         rowErrors.push('Invalid price')
-      } else if (variantName) {
-        collected.push({ name: variantName, price })
-      } else if (variantCols.length === 0) {
-        collected.push({ name: '', price })
       } else if (collected.length === 0) {
         collected.push({ name: '', price })
       }
-    } else if (variantName && variantCols.length === 0) {
-      rowErrors.push('Invalid price')
+    } else if (Number.isFinite(namedVariantPrice)) {
+      rowErrors.push('Missing variant name')
     }
 
     const hasContent =
@@ -452,9 +586,14 @@ function variantList(value) {
   return Array.isArray(value) ? value : []
 }
 
+export function variantMatchKey(name) {
+  return normalizeImportName(canonicalVariantName(name) || name)
+}
+
 function findVariantIndex(variants, name) {
-  const key = normalizeImportName(name)
-  return variantList(variants).findIndex((row) => normalizeImportName(row?.name) === key)
+  const key = variantMatchKey(name)
+  if (!key) return -1
+  return variantList(variants).findIndex((row) => variantMatchKey(row?.name) === key)
 }
 
 export function mergeImportedVariants(existingVariants, incomingVariants) {
@@ -463,8 +602,8 @@ export function mergeImportedVariants(existingVariants, incomingVariants) {
   let skipped = 0
   const conflicts = []
   for (const incoming of variantList(incomingVariants)) {
-    const name = String(incoming?.name || '').trim()
-    if (!name) continue
+    const name = canonicalVariantName(incoming?.name) || String(incoming?.name || '').trim()
+    if (!name || !variantMatchKey(name)) continue
     const price = moneyAmount(incoming.price)
     if (price == null) continue
     const index = findVariantIndex(next, name)
@@ -485,7 +624,7 @@ export function mergeImportedVariants(existingVariants, incomingVariants) {
 }
 
 export function applyImportedItem(existing, incoming) {
-  const incomingVariants = variantList(incoming?.variants).filter((row) => String(row?.name || '').trim())
+  const incomingVariants = variantList(incoming?.variants).filter((row) => variantMatchKey(row?.name))
   if (!existing) {
     return {
       action: 'create',
@@ -587,13 +726,47 @@ export function applyImportBatch(catalog, incomingRows) {
   }
 }
 
+export function importRowsFingerprint(rows = []) {
+  const normalized = (rows || []).map((row) => ({
+    c: normalizeImportName(row.category),
+    n: normalizeImportName(row.name),
+    p: moneyAmount(row.price),
+    v: variantList(row.variants)
+      .map((variant) => ({
+        n: variantMatchKey(variant.name),
+        p: moneyAmount(variant.price),
+      }))
+      .filter((variant) => variant.n)
+      .sort((a, b) => a.n.localeCompare(b.n)),
+  }))
+  normalized.sort((a, b) => `${a.c}::${a.n}`.localeCompare(`${b.c}::${b.n}`))
+  return JSON.stringify(normalized)
+}
+
+export function hashFingerprint(value) {
+  const text = String(value || '')
+  let hash = 2166136261
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(16)
+}
+
 export function formatImportSuccess(result, { restaurantName, completedAt } = {}) {
   const createdItems = Number(result?.created_items) || 0
   const createdVariants = Number(result?.created_variants) || 0
+  const createdCategories = Number(result?.created_categories) || 0
   const skippedItems = Number(result?.skipped_items) || 0
   const conflicts = Number(result?.conflicts) || 0
   const failedRows = Number(result?.failed_rows) || 0
   const when = completedAt || result?.completed_at || ''
   const restaurant = restaurantName || result?.restaurant_name || 'selected restaurant'
+  const unchanged =
+    result?.no_changes ||
+    (createdItems === 0 && createdVariants === 0 && createdCategories === 0 && conflicts === 0)
+  if (unchanged) {
+    return `No changes detected — this menu is already imported for ${restaurant}.${when ? ` Checked ${when}.` : ''}`
+  }
   return `Menu import completed successfully for ${restaurant}. ${createdItems} items created, ${createdVariants} variants created, ${skippedItems} existing items skipped, ${conflicts} conflicts, ${failedRows} failed rows.${when ? ` Completed ${when}.` : ''}`
 }

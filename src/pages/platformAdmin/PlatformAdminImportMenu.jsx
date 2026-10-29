@@ -7,6 +7,7 @@ import { formatDateTime } from '../../lib/platformAdmin'
 import {
   SAMPLE_SHEET_URL,
   buildRows,
+  detectHeaderRow,
   formatImportSuccess,
   formatVariantsPreview,
   guessMapping,
@@ -30,6 +31,7 @@ export default function PlatformAdminImportMenu() {
   const [busy, setBusy] = useState(false)
   const [importing, setImporting] = useState(false)
   const [lastResult, setLastResult] = useState(null)
+  const [allowPartial, setAllowPartial] = useState(false)
   const importLock = useRef(false)
   const fileRef = useRef(null)
 
@@ -47,12 +49,14 @@ export default function PlatformAdminImportMenu() {
   const summary = summarizeImport({ rows, errors })
 
   const applyGrid = useCallback((nextGrid) => {
+    const nextHeader = detectHeaderRow(nextGrid)
     setGrid(nextGrid)
-    setHeaderRow(0)
-    setMapping(guessMapping(nextGrid[0] || []))
+    setHeaderRow(nextHeader)
+    setMapping(guessMapping(nextGrid[nextHeader] || []))
     setNotice('')
     setError('')
     setLastResult(null)
+    setAllowPartial(false)
   }, [])
 
   async function onFetchSheet() {
@@ -89,6 +93,11 @@ export default function PlatformAdminImportMenu() {
     reader.readAsText(file)
   }
 
+  function clearCompletedImport() {
+    setLastResult(null)
+    setAllowPartial(false)
+  }
+
   async function onImport() {
     if (importLock.current || importing) return
     if (!restaurantId) {
@@ -97,6 +106,10 @@ export default function PlatformAdminImportMenu() {
     }
     if (!rows.length) {
       setError('There are no valid rows to import.')
+      return
+    }
+    if (errors.length && !allowPartial) {
+      setError(`There are ${errors.length} rows with errors. Confirm a partial import of the ${rows.length} valid rows, or fix the mapping first.`)
       return
     }
     importLock.current = true
@@ -118,7 +131,6 @@ export default function PlatformAdminImportMenu() {
     const completedAt = formatDateTime(data.completed_at || new Date().toISOString())
     const restaurantName = selected?.name || data.restaurant_name || 'selected restaurant'
     setLastResult({ ...data, restaurant_name: restaurantName, completed_at: completedAt })
-    setNotice(formatImportSuccess(data, { restaurantName, completedAt }))
   }
 
   const selected = restaurants.find((r) => r.id === restaurantId)
@@ -134,7 +146,7 @@ export default function PlatformAdminImportMenu() {
       </div>
 
       <Alert>{error}</Alert>
-      <Alert type="success">{notice}</Alert>
+      {notice && !lastResult ? <Alert type="success">{notice}</Alert> : null}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="grid gap-4 lg:grid-cols-2">
@@ -142,7 +154,10 @@ export default function PlatformAdminImportMenu() {
             Target restaurant
             <select
               value={restaurantId}
-              onChange={(e) => setRestaurantId(e.target.value)}
+              onChange={(e) => {
+                setRestaurantId(e.target.value)
+                clearCompletedImport()
+              }}
               className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700"
             >
               <option value="">Select a restaurant…</option>
@@ -203,6 +218,7 @@ export default function PlatformAdminImportMenu() {
                     const next = Number(e.target.value)
                     setHeaderRow(next)
                     setMapping(guessMapping(grid[next] || []))
+                    clearCompletedImport()
                   }}
                   className="ml-2 rounded-lg border border-slate-200 px-2 py-1 text-sm"
                 >
@@ -221,7 +237,10 @@ export default function PlatformAdminImportMenu() {
                   {field.required ? <span className="text-red-600"> *</span> : null}
                   <select
                     value={mapping[field.key] ?? -1}
-                    onChange={(e) => setMapping((m) => ({ ...m, [field.key]: Number(e.target.value) }))}
+                    onChange={(e) => {
+                      setMapping((m) => ({ ...m, [field.key]: Number(e.target.value) }))
+                      clearCompletedImport()
+                    }}
                     className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
                   >
                     <option value={-1}>— Not mapped —</option>
@@ -256,6 +275,7 @@ export default function PlatformAdminImportMenu() {
                           type="checkbox"
                           checked={checked}
                           onChange={() => {
+                            clearCompletedImport()
                             setMapping((m) => {
                               const current = Array.isArray(m.variantColumns)
                                 ? m.variantColumns.slice()
@@ -336,15 +356,18 @@ export default function PlatformAdminImportMenu() {
           </div>
 
           {lastResult ? (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-              <p className="font-medium">Menu import completed successfully</p>
-              <p className="mt-1">
-                {lastResult.restaurant_name} · {lastResult.completed_at}
+            <div className={`rounded-2xl border p-4 text-sm ${lastResult.no_changes ? 'border-slate-200 bg-slate-50 text-slate-800' : 'border-emerald-200 bg-emerald-50 text-emerald-900'}`}>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Latest completed import</p>
+              <p className="mt-1 font-medium">
+                {formatImportSuccess(lastResult, {
+                  restaurantName: lastResult.restaurant_name,
+                  completedAt: lastResult.completed_at,
+                })}
               </p>
               <p className="mt-2 text-xs">
                 {lastResult.created_items || 0} items created · {lastResult.created_variants || 0} variants created ·{' '}
-                {lastResult.skipped_items || 0} existing items skipped · {lastResult.conflicts || 0} conflicts ·{' '}
-                {lastResult.failed_rows || 0} failed rows
+                {lastResult.created_categories || 0} categories created · {lastResult.skipped_items || 0} existing items skipped ·{' '}
+                {lastResult.conflicts || 0} conflicts · {lastResult.failed_rows || 0} failed rows
               </p>
               {Array.isArray(lastResult.conflict_samples) && lastResult.conflict_samples.length ? (
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-800">
@@ -359,11 +382,29 @@ export default function PlatformAdminImportMenu() {
             </div>
           ) : null}
 
+          {errors.length ? (
+            <label className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={allowPartial}
+                onChange={(e) => setAllowPartial(e.target.checked)}
+              />
+              <span>
+                Import only the {rows.length} valid rows and skip {errors.length} rows with errors. Invalid rows are never written.
+              </span>
+            </label>
+          ) : null}
+
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-slate-500">
               Importing into <span className="font-medium text-slate-700">{selected?.name || 'no restaurant selected'}</span>
             </p>
-            <Button className="bg-blue-600 hover:bg-blue-700" onClick={onImport} disabled={importing || !rows.length || !restaurantId}>
+            <Button
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={onImport}
+              disabled={importing || !rows.length || !restaurantId || (errors.length > 0 && !allowPartial)}
+            >
               {importing ? 'Importing menu…' : `Import ${rows.length} items`}
             </Button>
           </div>
