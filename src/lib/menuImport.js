@@ -162,8 +162,10 @@ export function canonicalVariantName(value) {
   if (sized) return sized
   const text = String(value || '').trim()
   if (!text) return ''
-  const normalized = stripCurrencySuffix(text)
-  if (GENERIC_PRICE_LABELS.has(normalized)) return ''
+  const stripped = stripCurrencySuffix(text)
+  const normalized = stripped.replace(/\s+(price|rate|mrp|cost)$/g, '').trim()
+  if (GENERIC_PRICE_LABELS.has(stripped) || GENERIC_PRICE_LABELS.has(normalized)) return ''
+  if (SIZE_ALIASES.has(normalized)) return SIZE_ALIASES.get(normalized)
   for (const [alias, name] of SIZE_ALIASES) {
     if (normalized === alias || normalized.startsWith(`${alias} `) || normalized.startsWith(`${alias}(`)) {
       return name
@@ -758,6 +760,7 @@ export function formatImportSuccess(result, { restaurantName, completedAt } = {}
   const createdVariants = Number(result?.created_variants) || 0
   const createdCategories = Number(result?.created_categories) || 0
   const skippedItems = Number(result?.skipped_items) || 0
+  const skippedVariants = Number(result?.skipped_variants) || 0
   const conflicts = Number(result?.conflicts) || 0
   const failedRows = Number(result?.failed_rows) || 0
   const when = completedAt || result?.completed_at || ''
@@ -768,5 +771,5 @@ export function formatImportSuccess(result, { restaurantName, completedAt } = {}
   if (unchanged) {
     return `No changes detected — this menu is already imported for ${restaurant}.${when ? ` Checked ${when}.` : ''}`
   }
-  return `Menu import completed successfully for ${restaurant}. ${createdItems} items created, ${createdVariants} variants created, ${skippedItems} existing items skipped, ${conflicts} conflicts, ${failedRows} failed rows.${when ? ` Completed ${when}.` : ''}`
+  return `Menu import completed successfully for ${restaurant}. ${createdItems} items created, ${createdVariants} variants inserted now, ${skippedItems} existing items skipped, ${skippedVariants} existing variants skipped, ${conflicts} conflicts, ${failedRows} failed rows.${when ? ` Completed ${when}.` : ''}`
 }

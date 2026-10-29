@@ -365,9 +365,10 @@ export default function PlatformAdminImportMenu() {
                 })}
               </p>
               <p className="mt-2 text-xs">
-                {lastResult.created_items || 0} items created · {lastResult.created_variants || 0} variants created ·{' '}
-                {lastResult.created_categories || 0} categories created · {lastResult.skipped_items || 0} existing items skipped ·{' '}
-                {lastResult.conflicts || 0} conflicts · {lastResult.failed_rows || 0} failed rows
+                {lastResult.created_items || 0} items created · {lastResult.created_variants || 0} variants inserted now ·{' '}
+                {lastResult.skipped_variants || 0} existing variants skipped · {lastResult.created_categories || 0} categories created ·{' '}
+                {lastResult.skipped_items || 0} existing items skipped · {lastResult.conflicts || 0} conflicts ·{' '}
+                {lastResult.failed_rows || 0} failed rows
               </p>
               {Array.isArray(lastResult.conflict_samples) && lastResult.conflict_samples.length ? (
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-800">

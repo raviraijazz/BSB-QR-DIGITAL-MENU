@@ -402,6 +402,99 @@ test('mutton Half/Full source rows stay one parent with two portion prices', () 
   )
 })
 
+test('89 expected variants on 36 skipped parents insert zero extra variants', () => {
+  const chicken = Array.from({ length: 20 }, (_, i) => ({
+    name: `Chicken ${i + 1}`,
+    category: 'Chicken Curries',
+    price: 230,
+    variants: [
+      { name: 'Quarter Price (INR)', price: 230, is_available: true },
+      { name: 'Half Price (INR)', price: 330, is_available: true },
+      { name: 'Full Price (INR)', price: 580, is_available: true },
+    ],
+  }))
+  const mutton = Array.from({ length: 13 }, (_, i) => ({
+    name: `Mutton ${i + 1}`,
+    category: 'Mutton Curries',
+    price: 290,
+    variants: [
+      { name: 'Half (2 pcs.)', price: 290, is_available: true },
+      { name: 'Full (4 pcs.)', price: 490, is_available: true },
+    ],
+  }))
+  const foodCourt = [
+    { name: 'Food Court Chicken(Spl.)', category: 'Food Court Special Non-veg', price: 190, variants: [{ name: 'Quarter', price: 190, is_available: true }] },
+    { name: 'Food Court Mutton', category: 'Food Court Special Non-veg', price: 270, variants: [{ name: 'Quarter', price: 270, is_available: true }] },
+    { name: 'Food Court Egg Special', category: 'Food Court Special Non-veg', price: 170, variants: [{ name: 'Quarter', price: 170, is_available: true }] },
+  ]
+  const incoming = [
+    ...chicken.map((row) => ({
+      ...row,
+      variants: [
+        { name: 'Quarter', price: 230, is_available: true },
+        { name: 'Half', price: 330, is_available: true },
+        { name: 'Full', price: 580, is_available: true },
+      ],
+    })),
+    ...mutton.map((row) => ({
+      ...row,
+      variants: [
+        { name: 'Half', price: 290, is_available: true },
+        { name: 'Full', price: 490, is_available: true },
+      ],
+    })),
+    ...foodCourt,
+  ]
+  const catalog = {
+    categories: [
+      { name: 'Chicken Curries' },
+      { name: 'Mutton Curries' },
+      { name: 'Food Court Special Non-veg' },
+    ],
+    items: [...chicken, ...mutton, ...foodCourt],
+  }
+  const second = applyImportBatch(catalog, incoming)
+  assert.equal(second.catalog.items.length, 36)
+  assert.equal(second.result.created_items, 0)
+  assert.equal(second.result.created_variants, 0)
+  assert.equal(second.result.skipped_items, 36)
+  assert.equal(second.result.skipped_variants, 89)
+  assert.equal(second.result.conflicts, 0)
+})
+
+test('stored Quarter Price labels match incoming Quarter and do not insert again', () => {
+  const existing = {
+    name: 'Butter Chicken',
+    category: 'Chicken Curries',
+    price: 230,
+    variants: [
+      { name: 'Quarter Price (INR)', price: 230, is_available: true },
+      { name: 'Half Price (INR)', price: 330, is_available: true },
+      { name: 'Full Price (INR)', price: 580, is_available: true },
+    ],
+  }
+  const incoming = {
+    name: 'Butter Chicken',
+    category: 'Chicken Curries',
+    price: 230,
+    variants: [
+      { name: 'Quarter', price: 230, is_available: true },
+      { name: 'Half', price: 330, is_available: true },
+      { name: 'Full', price: 580, is_available: true },
+    ],
+  }
+  assert.equal(canonicalVariantName('Quarter Price (INR)'), 'Quarter')
+  assert.equal(canonicalVariantName('Half (2 pcs.)'), 'Half')
+  const merged = mergeImportedVariants(existing.variants, incoming.variants)
+  assert.equal(merged.created, 0)
+  assert.equal(merged.skipped, 3)
+  assert.equal(merged.conflicts.length, 0)
+  assert.equal(merged.variants.length, 3)
+  const result = applyImportedItem(existing, incoming)
+  assert.equal(result.createdVariants, 0)
+  assert.equal(result.skippedVariants, 3)
+})
+
 test('repeat identical import reports no changes instead of a false success', () => {
   const first = applyImportBatch({ categories: [], items: [] }, [chickenBiryani])
   const second = applyImportBatch(first.catalog, [chickenBiryani])
@@ -430,7 +523,7 @@ test('formatImportSuccess includes restaurant, counts and completion time', () =
   assert.match(message, /completed successfully/)
   assert.match(message, /Sample Kitchen/)
   assert.match(message, /12 items created/)
-  assert.match(message, /8 variants created/)
+  assert.match(message, /8 variants inserted now/)
   assert.match(message, /40 existing items skipped/)
   assert.match(message, /2 conflicts/)
   assert.match(message, /1 failed rows/)

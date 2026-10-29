@@ -20,6 +20,10 @@
 --
 -- Unique indexes are NOT added here: legacy duplicates from earlier imports
 -- would make them fail. A diagnostic query is included at the end.
+--
+-- Re-run this entire file. An earlier version compared variant names exactly,
+-- so stored "Quarter Price (INR)" did not match incoming "Quarter" and every
+-- repeat import appended another 89 jsonb variants onto existing parents.
 
 create or replace function public.platform_import_variant_name(p_name text)
 returns text
@@ -29,27 +33,37 @@ as $$
 declare
   v text := lower(btrim(coalesce(p_name, '')));
 begin
-  v := btrim(regexp_replace(v, '\s*\((inr|rs|₹)\)\s*$', ''));
-  if v = '' or v in ('price', 'variant price', 'unit price', 'amount', 'rate', 'mrp', 'cost', 'notes', 'note', 'variant name') then
+  v := regexp_replace(v, '\s*\((inr|rs|inr\.|₹)\)', ' ', 'gi');
+  v := regexp_replace(v, '[₹]', ' ', 'g');
+  v := regexp_replace(v, '\s+', ' ', 'g');
+  v := btrim(v);
+  v := btrim(regexp_replace(v, '\s+(price|rate|mrp|cost)$', ''));
+  if v = '' or v in (
+    'price', 'variant', 'variant price', 'unit price', 'amount', 'rate', 'mrp',
+    'cost', 'notes', 'note', 'variant name', 'size', 'portion'
+  ) then
     return '';
   end if;
-  if v in ('quarter', 'qtr', '1/4', '1/4th') or v like 'quarter %' or v like 'quarter(%' or v like 'qtr %' then
+  if v ~ '^(quarter|qtr|1/4)' then
     return 'Quarter';
   end if;
-  if v in ('half', '1/2', '1/2th') or v like 'half %' or v like 'half(%' then
+  if v ~ '^(half|1/2)' then
     return 'Half';
   end if;
-  if v in ('full') or v like 'full %' or v like 'full(%' then
+  if v ~ '^full' then
     return 'Full';
   end if;
-  if v in ('small', 'sm') or v like 'small %' then
+  if v ~ '^(small|sm)(\s|$)' then
     return 'Small';
   end if;
-  if v in ('medium', 'med') or v like 'medium %' then
+  if v ~ '^(medium|med)(\s|$)' then
     return 'Medium';
   end if;
-  if v in ('large', 'lg') or v like 'large %' then
+  if v ~ '^(large|lg)(\s|$)' then
     return 'Large';
+  end if;
+  if v ~ '^(regular|reg)(\s|$)' then
+    return 'Regular';
   end if;
   return btrim(coalesce(p_name, ''));
 end;
@@ -230,7 +244,8 @@ begin
       select e
       into v_match
       from jsonb_array_elements(v_next_variants) e
-      where public.platform_import_variant_name(e->>'name') = v_variant_name
+      where public.platform_import_variant_name(e->>'name') <> ''
+        and lower(public.platform_import_variant_name(e->>'name')) = lower(v_variant_name)
       limit 1;
 
       if v_match is null then
@@ -360,3 +375,34 @@ grant execute on function public.platform_import_menu(uuid, jsonb, text) to auth
 -- where public.platform_import_variant_name(v->>'name') = ''
 --    or lower(btrim(v->>'name')) like 'variant price%'
 -- order by r.name, m.name;
+--
+-- Duplicate variants grouped by restaurant, parent item, and canonical label
+-- (Quarter Price (INR) and Quarter count as the same variant):
+--
+-- select r.name as restaurant,
+--        m.id as menu_item_id,
+--        m.name as item,
+--        public.platform_import_variant_name(v->>'name') as canonical_variant,
+--        count(*) as copies,
+--        jsonb_agg(jsonb_build_object('stored_name', v->>'name', 'price', v->>'price')) as stored
+-- from public.menu_items m
+-- join public.restaurants r on r.id = m.restaurant_id
+-- cross join lateral jsonb_array_elements(coalesce(m.variants, '[]'::jsonb)) v
+-- where public.platform_import_variant_name(v->>'name') <> ''
+-- group by r.name, m.id, m.name, public.platform_import_variant_name(v->>'name')
+-- having count(*) > 1
+-- order by copies desc, r.name, m.name;
+--
+-- Check whether historical order/KOT lines mention those items. item_name is a
+-- snapshot text, so this is informational only and never a delete list:
+--
+-- select r.name as restaurant, m.name as item, count(oi.id) as order_lines
+-- from public.menu_items m
+-- join public.restaurants r on r.id = m.restaurant_id
+-- left join public.orders o on o.restaurant_id = m.restaurant_id
+-- left join public.order_items oi
+--   on oi.order_id = o.id
+--  and oi.item_name ilike m.name || '%'
+-- group by r.name, m.name
+-- having count(oi.id) > 0
+-- order by order_lines desc, r.name, m.name;
